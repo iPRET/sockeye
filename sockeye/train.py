@@ -288,7 +288,10 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
     validation_sources = [str(os.path.abspath(source)) for source in validation_sources]
     validation_targets = [args.validation_target] + args.validation_target_factors
     validation_targets = [str(os.path.abspath(target)) for target in validation_targets]
+    validation_alignment_matrix = os.path.abspath(args.validation_alignment_matrix) \
+        if args.validation_alignment_matrix is not None else None
 
+    #NOTE TO INGUS - it might be coshier to modify this warning thing.
     if utils.is_distributed():
         error_msg = 'Distributed training requires prepared training data. Use `python -m sockeye.prepare_data` and ' \
                     'specify with %s' % C.TRAINING_ARG_PREPARED_DATA
@@ -298,6 +301,7 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
                                                      C.TRAINING_ARG_TARGET,
                                                      C.TRAINING_ARG_PREPARED_DATA)
     if args.prepared_data is not None:
+        # NOTE TO INGUS - It's probably coshier to modify this condition for warning.
         utils.check_condition(args.source is None and args.target is None, either_raw_or_prepared_error_msg)
         if not resume_training:
             utils.check_condition(args.source_vocab is None and args.target_vocab is None,
@@ -307,6 +311,7 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
             prepared_data_dir=args.prepared_data,
             validation_sources=validation_sources,
             validation_targets=validation_targets,
+            validation_alignment_matrices=validation_alignment_matrix,
             shared_vocab=shared_vocab,
             batch_size=args.batch_size,
             batch_type=args.batch_type,
@@ -410,6 +415,7 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
         sources = [str(os.path.abspath(s)) for s in sources]
         targets = [args.target] + args.target_factors
         targets = [str(os.path.abspath(t)) for t in targets]
+        alignment_matrices = os.path.abspath(args.alignment_matrix) if args.alignment_matrix is not None else None
 
         check_condition(len(sources) == len(validation_sources),
                         'Training and validation data must have the same number of source factors, '
@@ -417,6 +423,9 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
         check_condition(len(targets) == len(validation_targets),
                         'Training and validation data must have the same number of target factors, '
                         'but found %d and %d.' % (len(source_vocabs), len(validation_sources)))
+
+        #NOTE TO INGUS - Maybe I have to make a warning for when alignment matrices are given in training
+        # but not validation.
 
         train_iter, validation_iter, config_data, data_info = data_io.get_training_data_iters(
             sources=sources,
@@ -953,7 +962,6 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
     :param checkpoint_callback: An optional callback function (int -> None). The function will be called
                                 each time a checkpoint has been reached
     """
-
     # When running distributed training, initializing the process group is a
     # prerequisite for all inter-process communication.
 
@@ -1151,7 +1159,8 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
         # https://github.com/pytorch/pytorch/pull/63552
         with torch.cuda.amp.autocast(cache_enabled=False) if args.amp else utils.no_context():  # type: ignore
             training_model = torch.jit.trace(training_model, (batch.source, batch.source_length,
-                                                            batch.target, batch.target_length), strict=False)
+                                                             batch.target, batch.target_length,
+                                                             batch.alignment_matrix), strict=False)
         eval_iter.reset()
 
     if utils.is_distributed() and not utils.using_deepspeed():

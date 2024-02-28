@@ -123,7 +123,7 @@ class Scorer:
         # TODO: scoring should support multiple devices
         batch = batch.load(self.device)
 
-        model_inputs = (batch.source, batch.source_length, batch.target, batch.target_length)
+        model_inputs = (batch.source, batch.source_length, batch.target, batch.target_length, batch.alignment_matrix)
         if self.traced_model is None:
             self.traced_model = pt.jit.trace(self.model, model_inputs, strict=False)
         outputs = self.traced_model(*model_inputs)  # type: Dict[str, pt.Tensor]

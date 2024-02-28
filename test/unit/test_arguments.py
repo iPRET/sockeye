@@ -45,6 +45,7 @@ def test_simple_dict():
      '--validation-source test_validation_src --validation-target test_validation_tgt '
      '--output test_output',
      dict(source='test_src', target='test_tgt',
+          alignment_matrix=None,
           source_factors=[],
           source_factors_use_source_vocab=[],
           target_factors=[],
@@ -52,6 +53,7 @@ def test_simple_dict():
           end_of_prepending_tag=None,
           prepared_data='prep_data',
           validation_source='test_validation_src', validation_target='test_validation_tgt',
+          validation_alignment_matrix=None,
           validation_source_factors=[],
           validation_target_factors=[],
           output='test_output', overwrite_output=False,
@@ -65,6 +67,7 @@ def test_simple_dict():
      '-vs test_validation_src -vt test_validation_tgt '
      '-o test_output',
      dict(source='test_src', target='test_tgt',
+          alignment_matrix=None,
           source_factors=[],
           source_factors_use_source_vocab=[],
           target_factors=[],
@@ -72,6 +75,7 @@ def test_simple_dict():
           end_of_prepending_tag=None,
           prepared_data='prep_data',
           validation_source='test_validation_src', validation_target='test_validation_tgt',
+          validation_alignment_matrix=None,
           validation_source_factors=[],
           validation_target_factors=[],
           output='test_output', overwrite_output=False,
@@ -291,6 +295,7 @@ def test_tutorial_averaging_args(test_params, expected_params, expected_params_p
     # WMT tutorial
     ('--source corpus.tc.BPE.de --target corpus.tc.BPE.en --output train_data ',
      dict(source='corpus.tc.BPE.de', target='corpus.tc.BPE.en',
+          alignment_matrix=None,
           source_vocab=None,
           target_vocab=None,
           source_factors=[],
@@ -326,6 +331,7 @@ def test_tutorial_prepare_data_cli_args(test_params, expected_params):
 @pytest.mark.parametrize("test_params, expected_params", [
     ('--source test_src --target test_tgt --output prepared_data ',
      dict(source='test_src', target='test_tgt',
+          alignment_matrix=None,
           source_vocab=None,
           target_vocab=None,
           source_factors=[],

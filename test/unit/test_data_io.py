@@ -160,7 +160,8 @@ def test_sequence_reader(sequences, use_vocab, add_bos, add_eos):
 def test_nonparallel_iter(source_iterables, target_iterables):
     with pytest.raises(SockeyeError) as e:
         list(data_io.parallel_iter(source_iterables, target_iterables))
-    assert str(e.value) == "Different number of lines in source(s) and target(s) iterables."
+    assert str(e.value) == ("Different number of lines in source(s) or target(s) or"
+                            " alignment matrices (if specified) iterables.")
 
 
 @pytest.mark.parametrize("source_iterables, target_iterables",
@@ -194,27 +195,27 @@ def test_not_target_token_parallel_iter(source_iterables, target_iterables):
                              (
                                      [[[0], [1, 1]], [[0], [1, 1]]],
                                      [[[0], [1]]],
-                                     [([[0], [0]], [[0]]), ([[1, 1], [1, 1]], [[1]])]
+                                     [([[0], [0]], [[0]], None), ([[1, 1], [1, 1]], [[1]], None)]
                              ),
                              (
                                      [[[0], None], [[0], None]],
                                      [[[0], [1]]],
-                                     [([[0], [0]], [[0]])]
+                                     [([[0], [0]], [[0]], None)]
                              ),
                              (
                                      [[[0], [1, 1]], [[0], [1, 1]]],
                                      [[[0], None]],
-                                     [([[0], [0]], [[0]])]
+                                     [([[0], [0]], [[0]], None)]
                              ),
                              (
                                      [[None, [1, 1]], [None, [1, 1]]],
                                      [[None, [1]]],
-                                     [([[1, 1], [1, 1]], [[1]])]
+                                     [([[1, 1], [1, 1]], [[1]], None)]
                              ),
                              (
                                      [[None, [1]]],
                                      [[None, [1, 1]], [None, [1, 1]]],
-                                     [([[1]], [[1, 1], [1, 1]])]
+                                     [([[1]], [[1, 1], [1, 1]], None)]
                              ),
                              (
                                      [[None, [1, 1]], [None, [1, 1]]],
