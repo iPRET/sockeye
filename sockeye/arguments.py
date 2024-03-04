@@ -821,6 +821,16 @@ def add_model_parameters(params):
                               help='When enabled, gradients for NVS are blocked from propagating back to the encoder. '
                                     'This means that NVS learns to work with the main model\'s representations but '
                                     'does not influence its training.')
+    model_params.add_argument('--return-attention',
+                              type=bool,
+                              default=False,
+                              help='Kill me please')
+    model_params.add_argument('--attention-alignment-layer',
+                              type=int,
+                              default=None,
+                              help='Decoder layer that is trained to align with alignment matrices. Higher number means'
+                                   'closer to output.')
+    #CTI: Gotta make better doc.
 
 
 def add_batch_args(params, default_batch_size=4096, default_batch_type=C.BATCH_TYPE_WORD):

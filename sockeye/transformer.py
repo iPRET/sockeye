@@ -42,6 +42,7 @@ class TransformerConfig(config.Config):
     use_lhuc: bool = False
     depth_key_value: int = 0
     use_glu: bool = False
+    return_attention: bool = False
 
 
 class TransformerEncoderBlock(pt.nn.Module):
@@ -103,7 +104,7 @@ class TransformerEncoderBlock(pt.nn.Module):
                          to mask self-attention scores. True for padding positions.
         """
         # self-attention
-        data_self_att, _ = self.self_attention(inputs=self.pre_self_attention(data),
+        data_self_att, _, _ = self.self_attention(inputs=self.pre_self_attention(data),
                                                previous_states=None,
                                                mask=att_mask,
                                                bias=None)
@@ -130,10 +131,12 @@ class TransformerDecoderBlock(pt.nn.Module):
                  config: TransformerConfig,
                  inference_only: bool,
                  dtype: Optional[pt.dtype] = None,
-                 clamp_to_dtype: bool = False) -> None:
+                 clamp_to_dtype: bool = False,
+                 return_attention: bool = False) -> None:
         super().__init__()
         self.decoder_type = config.decoder_type
         self.inference_only = inference_only
+        self.return_attention = return_attention
 
         self.autoregr_layer = None
         if self.decoder_type == C.TRANSFORMER_TYPE:
@@ -174,7 +177,8 @@ class TransformerDecoderBlock(pt.nn.Module):
                                                                dropout=config.dropout_attention,
                                                                depth_key_value=config.depth_key_value,
                                                                dtype=dtype,
-                                                               clamp_to_dtype=clamp_to_dtype)
+                                                               clamp_to_dtype=clamp_to_dtype,
+                                                               return_attention=return_attention)
         self.post_enc_attention = TransformerProcessBlock(sequence=config.postprocess_sequence,
                                                           dropout=config.dropout_prepost,
                                                           num_hidden=config.model_size,
@@ -235,7 +239,7 @@ class TransformerDecoderBlock(pt.nn.Module):
                 source: pt.Tensor,
                 source_mask: Optional[pt.Tensor],
                 autoregr_states: Optional[pt.Tensor],
-                enc_att_kv: Optional[pt.Tensor] = None) -> Tuple[pt.Tensor, pt.Tensor]:
+                enc_att_kv: Optional[pt.Tensor] = None) -> Tuple[pt.Tensor, pt.Tensor, pt.Tensor]:
         target_autoregr, *new_autoregr_states = self.autoregr_layer(inputs=self.pre_autoregr_layer(target),
                                                                     previous_states=autoregr_states,
                                                                     mask=target_mask)
@@ -243,10 +247,16 @@ class TransformerDecoderBlock(pt.nn.Module):
         target = self.post_autoregr_layer(target_autoregr, target)
 
         # encoder attention
-        target_enc_att = self.enc_attention(queries=self.pre_enc_attention(target),
-                                            key_values=source,
-                                            mask=source_mask,
-                                            projected_memory_kv=enc_att_kv)
+        attention_output = self.enc_attention(queries=self.pre_enc_attention(target),
+                                              key_values=source,
+                                              mask=source_mask,
+                                              projected_memory_kv=enc_att_kv)
+
+        if self.return_attention and not self.inference_only:
+            target_enc_att, attention = attention_output
+        else:
+            target_enc_att = attention_output
+            attention = None
 
         target = self.post_enc_attention(target_enc_att, target)
 
@@ -257,7 +267,7 @@ class TransformerDecoderBlock(pt.nn.Module):
         if self.lhuc:
             target = self.lhuc(target)
 
-        return target, new_autoregr_states
+        return target, new_autoregr_states, attention
 
 
 class TransformerProcessBlock(pt.nn.Module):

@@ -33,8 +33,10 @@ DecoderConfig = Union[TransformerConfig]  # type: ignore
 def get_decoder(config: DecoderConfig,
                 inference_only: bool = False,
                 dtype: Optional[pt.dtype] = None,
-                clamp_to_dtype: bool = False) -> 'Decoder':
-    return Decoder.get_decoder(config=config, inference_only=inference_only, dtype=dtype, clamp_to_dtype=clamp_to_dtype)
+                clamp_to_dtype: bool = False,
+                return_attention: bool = False) -> 'Decoder':
+    return Decoder.get_decoder(config=config, inference_only=inference_only, dtype=dtype, clamp_to_dtype=clamp_to_dtype,
+                               return_attention=return_attention)
 
 
 class Decoder(pt.nn.Module):
@@ -70,7 +72,8 @@ class Decoder(pt.nn.Module):
                     config: DecoderConfig,
                     inference_only: bool,
                     dtype: Optional[pt.dtype] = None,
-                    clamp_to_dtype: bool = False) -> 'Decoder':
+                    clamp_to_dtype: bool = False,
+                    return_attention: bool = False) -> 'Decoder':
         """
         Creates decoder based on config type.
 
@@ -87,7 +90,7 @@ class Decoder(pt.nn.Module):
             raise ValueError('Unsupported decoder configuration %s' % config_type.__name__)
         decoder_cls = cls.__registry[config_type]
         return decoder_cls(config=config, inference_only=inference_only, dtype=dtype,  # type: ignore
-                           clamp_to_dtype=clamp_to_dtype)  # type: ignore
+                           clamp_to_dtype=clamp_to_dtype, return_attention=return_attention)  # type: ignore
 
     @abstractmethod
     def __init__(self):
@@ -147,7 +150,9 @@ class TransformerDecoder(Decoder):
                  config: TransformerConfig,
                  inference_only: bool = False,
                  dtype: Optional[pt.dtype] = None,
-                 clamp_to_dtype: bool = False) -> None:
+                 clamp_to_dtype: bool = False,
+                 return_attention: bool = False) -> None:
+        #CTI: gotta move return attention to transformer config.
         Decoder.__init__(self)
         pt.nn.Module.__init__(self)
         self.config = config
@@ -163,8 +168,10 @@ class TransformerDecoder(Decoder):
             transformer.TransformerDecoderBlock(config,
                                                 inference_only=inference_only,
                                                 dtype=dtype,
-                                                clamp_to_dtype=clamp_to_dtype)
+                                                clamp_to_dtype=clamp_to_dtype,
+                                                return_attention=return_attention)
             for _ in range(config.num_layers))
+        #CTI: Probably gotta make it so that only the correct attention is returned.
 
         self.final_process = transformer.TransformerProcessBlock(sequence=config.preprocess_sequence,
                                                                  dropout=config.dropout_prepost,
@@ -261,22 +268,24 @@ class TransformerDecoder(Decoder):
         :param states: List of initial states, as given by init_state_from_encoder().
         :return: Decoder output. Shape: (batch_size, target_embed_max_length, decoder_depth).
         """
-        outputs, _ = self.forward(inputs, states)
-        return outputs
+        outputs, _, attention = self.forward(inputs, states) #This should fully run the model on a batch.
+        return outputs, attention
 
-    def forward(self, step_input: pt.Tensor, states: List[pt.Tensor]) -> Tuple[pt.Tensor, List[pt.Tensor]]:
+    def forward(self, step_input: pt.Tensor, states: List[pt.Tensor]) -> Tuple[pt.Tensor, List[pt.Tensor], pt.Tensor]:
         target_mask = None
         if self.inference_only:
             steps, source_mask, *other = states
             source_encoded = None  # use constant pre-computed key value projections from the states
             enc_att_kv = other[:self.config.num_layers]
-            autoregr_states = other[self.config.num_layers:]
+            autoregr_states = other[self.config.num_layers:] #CTI: What are autoregressive states?
         else:
             if any(layer.needs_mask for layer in self.layers):
                 target_mask = self.autoregressive_mask(step_input)  # mask: (length, length)
+                #DCTI: This line creates a mask for the ?target?
+                #DCTI: But to do so. it looks at step_input
             steps, source_encoded, source_mask, *autoregr_states = states
             enc_att_kv = [None for _ in range(self.config.num_layers)]
-
+        #CTI: What does this code do??? v
         if any(layer.num_state_tensors > 1 for layer in self.layers):
             # separates autoregressive states by layer
             states_iter = iter(autoregr_states)
@@ -293,13 +302,13 @@ class TransformerDecoder(Decoder):
         target = self.dropout(target)
 
         new_autoregr_states = []  # type: List[pt.Tensor]
-        for layer, layer_autoregr_state, layer_enc_att_kv in zip(self.layers, autoregr_states, enc_att_kv):
-            target, new_layer_autoregr_state = layer(target=target,
-                                                     target_mask=target_mask,
-                                                     source=source_encoded,
-                                                     source_mask=source_mask_view,
-                                                     autoregr_states=layer_autoregr_state,
-                                                     enc_att_kv=layer_enc_att_kv)
+        for idx, (layer, layer_autoregr_state, layer_enc_att_kv) in enumerate(zip(self.layers, autoregr_states, enc_att_kv)):
+            target, new_layer_autoregr_state, attention = layer(target=target,
+                                                                target_mask=target_mask,
+                                                                source=source_encoded,
+                                                                source_mask=source_mask_view,
+                                                                autoregr_states=layer_autoregr_state,
+                                                                enc_att_kv=layer_enc_att_kv)
 
             new_autoregr_states += [*new_layer_autoregr_state]
 
@@ -316,7 +325,8 @@ class TransformerDecoder(Decoder):
         else:
             new_states = [steps, states[1], states[2]] + new_autoregr_states
 
-        return target, new_states
+        return (target, new_states,
+                attention.reshape([target.shape[0], -1, attention.shape[1], attention.shape[2]])[:, 0])
 
     def get_num_hidden(self):
         return self.config.model_size

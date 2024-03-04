@@ -395,3 +395,28 @@ class MSELoss(Loss):
     def create_metric(self) -> 'LossMetric':
         return LossMetric(name=C.LENRATIO_MSE)
 
+class AlignmentMatrixKLDivergenceLoss(Loss):
+    #CTI: Docs needed
+
+    def __init__(self,
+                 name: str = "Alignment Matrix KL Divergence",
+                 weight: float = 1.0,
+                 output_name: str = "attention",
+                 label_name: str = "alignment_matrix_label") -> None:
+        super().__init__(name=name, output_name=output_name, label_name=label_name, weight=weight)
+        #CTI: Default-names for variables are probably garbo.
+    def forward(self, attention_probs: pt.Tensor, alignment_matrix: pt.Tensor) -> Tuple[pt.Tensor, pt.Tensor]:
+        #CTI: Docs
+        #CTI: Imma assume the attention matrix is of the shape [batch, target, source]
+
+        #CTI: gotta probably pass the pre-softmax loss instead of post softmax.
+        #CTI: rename attention to logits or whatver makes sense.
+        loss = -(alignment_matrix * pt.log(attention_probs + 1e-8)).sum(dim=2).sum(dim=1) / alignment_matrix.shape[1]
+        num_samples = pt.ones_like(loss).sum()
+        loss = loss * self.weight
+        loss = loss.mean()
+
+        return loss, num_samples
+
+    def create_metric(self) -> 'LossMetric':
+        return LossMetric(name=C.LENRATIO_MSE)

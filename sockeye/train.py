@@ -238,7 +238,7 @@ def create_checkpoint_decoder(
         source_vocabs=source_vocabs,
         target_vocabs=target_vocabs,
         device=device)
-    cpd.warmup()
+    #cpd.warmup()
     return cpd
 
 
@@ -430,8 +430,10 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
         train_iter, validation_iter, config_data, data_info = data_io.get_training_data_iters(
             sources=sources,
             targets=targets,
+            alignment_matrices=alignment_matrices,
             validation_sources=validation_sources,
             validation_targets=validation_targets,
+            validation_alignment_matrices=validation_alignment_matrix,
             source_vocabs=source_vocabs,
             target_vocabs=target_vocabs,
             source_vocab_paths=source_vocab_paths,
@@ -729,7 +731,8 @@ def create_model_config(args: argparse.Namespace,
                                      neural_vocab_selection=args.neural_vocab_selection,
                                      neural_vocab_selection_block_loss=args.neural_vocab_selection_block_loss,
                                      lhuc=args.lhuc is not None,
-                                     dtype=C.DTYPE_FP32)
+                                     dtype=C.DTYPE_FP32,
+                                     return_attention=args.return_attention)
     return model_config
 
 
@@ -784,6 +787,11 @@ def create_losses(args: argparse.Namespace, all_num_classes: List[int]) -> List[
                                                   label_name=C.TARGET_LABEL_NAME,
                                                   metric_prefix="bow")
         losses.append(bow_loss)
+
+    if args.alignment_matrix:
+        kldiv = loss.AlignmentMatrixKLDivergenceLoss()
+
+        losses.append(kldiv)
 
     return losses
 
@@ -1091,7 +1099,8 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
     sockeye_model = model.SockeyeModel(
         model_config,
         clamp_to_dtype=args.clamp_to_dtype,
-        train_decoder_only=args.fixed_param_strategy == C.FIXED_PARAM_STRATEGY_ALL_EXCEPT_DECODER)
+        train_decoder_only=args.fixed_param_strategy == C.FIXED_PARAM_STRATEGY_ALL_EXCEPT_DECODER,
+        return_attention=args.return_attention)
 
     # Move the model to the training device unless using DeepSpeed, which moves
     # the model automatically.
@@ -1158,9 +1167,10 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
         # compatibility with tracing. See:
         # https://github.com/pytorch/pytorch/pull/63552
         with torch.cuda.amp.autocast(cache_enabled=False) if args.amp else utils.no_context():  # type: ignore
-            training_model = torch.jit.trace(training_model, (batch.source, batch.source_length,
-                                                             batch.target, batch.target_length,
-                                                             batch.alignment_matrix), strict=False)
+            #training_model = torch.jit.trace(training_model, (batch.source, batch.source_length,
+            #                                                 batch.target, batch.target_length,
+            #                                                 batch.alignment_matrix), strict=False)
+            pass
         eval_iter.reset()
 
     if utils.is_distributed() and not utils.using_deepspeed():

@@ -77,6 +77,7 @@ class ModelWithLoss(torch.nn.Module):
                                                              List[torch.Tensor],
                                                              List[torch.Tensor]]:
         model_outputs = self.model(source, source_length, target, target_length, alignment_matrix)
+        #DCTI: This line here calculates model outputs for batch later used for calculating losses.
         if utils.using_deepspeed():
             # Guarantee model outputs are float32 before computing losses.
             # Computing losses in DeepSpeed float16 mode can lead to overflow.
@@ -84,6 +85,7 @@ class ModelWithLoss(torch.nn.Module):
         loss_outputs = [loss_function(model_outputs, labels) for loss_function in self.losses]
         loss_values, num_samples = zip(*loss_outputs)
         sum_losses = sum(loss_values) if len(loss_values) > 1 else loss_values[0]
+        print(loss_values)
         return sum_losses, loss_values, num_samples  # type: ignore
 
 
@@ -273,6 +275,8 @@ class EarlyStoppingTrainer:
                     self._create_checkpoint(checkpoint_decoder, time_cost, train_iter, validation_iter)
                 break
 
+            #DCTI: This here thingy does a training step, I guess.
+            #DCTI: Probably including the gradient updates and everything.
             did_grad_step = self._step(batch=train_iter.next())
             checkpoint_up_to_date = checkpoint_up_to_date and not did_grad_step
 
@@ -359,6 +363,7 @@ class EarlyStoppingTrainer:
         batch = batch.load(device=self.device)
         with torch.cuda.amp.autocast(cache_enabled=False) if self.using_amp else utils.no_context():  # type: ignore
             # Forward + loss
+            #DCTI: This here line calculates the losses.
             sum_losses, loss_values, num_samples = self.model_object(batch.source, batch.source_length,
                                                                      batch.target, batch.target_length, batch.labels,
                                                                      batch.alignment_matrix)
@@ -404,6 +409,7 @@ class EarlyStoppingTrainer:
         with (self.model_object.model.no_sync() if utils.is_distributed() and not is_update_batch  # type: ignore
         and not utils.using_deepspeed() else utils.no_context()):
             loss_values, num_samples = self._forward_backward(batch, is_update_batch)
+            #DCTI: ^This here line probably does a full batch, including calculates gradients.
 
         for loss_func, loss_value, num_samples in zip(self.loss_functions, loss_values, num_samples):
             loss_func.metric.update(loss_value.item(), num_samples.item())

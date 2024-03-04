@@ -193,7 +193,7 @@ ARGS_MAY_DIFFER = ["device_id", "device_ids", "overwrite_output", "use_tensorboa
 TRAINING_ARG_SOURCE = "--source"
 TRAINING_ARG_TARGET = "--target"
 TRAINING_ARG_PREPARED_DATA = "--prepared-data"
-TRAINING_ARG_ALIGNMENT_MATRIX = "--alignment_matrix"
+TRAINING_ARG_ALIGNMENT_MATRIX = "--alignment-matrix"
 TRAINING_ARG_MAX_SEQ_LEN = "--max-seq-len"
 
 VOCAB_ARG_SHARED_VOCAB = "--shared-vocab"

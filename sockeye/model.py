@@ -82,6 +82,7 @@ class ModelConfig(Config):
     dtype: str = C.DTYPE_FP32
     neural_vocab_selection: Optional[str] = None
     neural_vocab_selection_block_loss: bool = False
+    return_attention: bool = False
 
 
 class SockeyeModel(pt.nn.Module):
@@ -107,7 +108,8 @@ class SockeyeModel(pt.nn.Module):
                  inference_only: bool = False,
                  clamp_to_dtype: bool = False,
                  train_decoder_only: bool = False,
-                 forward_pass_cache_size: int = 0) -> None:
+                 forward_pass_cache_size: int = 0,
+                 return_attention: bool = False) -> None:
         super().__init__()
         self.config = copy.deepcopy(config)
         self.dtype = utils.get_torch_dtype(config.dtype)
@@ -131,7 +133,8 @@ class SockeyeModel(pt.nn.Module):
         self.encoder = encoder.get_transformer_encoder(self.config.config_encoder, inference_only=inference_only,
                                                        dtype=self.dtype, clamp_to_dtype=clamp_to_dtype)
         self.decoder = decoder.get_decoder(self.config.config_decoder, inference_only=inference_only,
-                                           dtype=self.dtype, clamp_to_dtype=clamp_to_dtype)
+                                           dtype=self.dtype, clamp_to_dtype=clamp_to_dtype,
+                                           return_attention=return_attention)
         self.nvs = None
         if self.config.neural_vocab_selection:
             self.nvs = nvs.NeuralVocabSelection(model_size=self.config.config_encoder.model_size,
@@ -282,7 +285,7 @@ class SockeyeModel(pt.nn.Module):
                  vocab selection prediction (if present, otherwise None).
         """
         source_embed = self.embedding_source(source)
-        target_embed = self.embedding_target(target)
+        target_embed = self.embedding_target(target) #DCTI: returns [batch, seq len, emb size]
         source_encoded, source_encoded_length, att_mask = self.encoder(source_embed, source_length)
         states = self.decoder.init_state_from_encoder(source_encoded, source_encoded_length, target_embed)
         nvs = None
@@ -336,14 +339,20 @@ class SockeyeModel(pt.nn.Module):
         # caching the encoder and embedding forward passes), turn off autograd
         # for the encoder and embeddings to save memory.
         with pt.no_grad() if self.train_decoder_only or self.forward_pass_cache_size > 0 else utils.no_context():
+            #DCTI: This line probably runs both the embedder and the decoder.
+            #DCTI: It also probably runs the embedder on targets.
             source_encoded, source_encoded_length, target_embed, states, nvs_prediction = self.embed_and_encode(
                 source,
                 source_length,
                 target)
-
-        target = self.decoder.decode_seq(target_embed, states=states)
-
+            #DCTI: What the fuck is ?states? I looked at it, and still have no idea.
+        target, attention = self.decoder.decode_seq(target_embed, states=states)
+        #DCTI: ^ This line runs the decoder on the batch before the final lin transform.
+        #CTI: I guess this is the part where I have to add some kind of extra function call to the decoder,
+        #CTI: which would run the model with full context?
         forward_output = dict()
+
+        forward_output['attention'] = attention
 
         forward_output[C.LOGITS_NAME] = self.output_layer(target, None)
 
@@ -652,7 +661,7 @@ class _DecodeStep(pt.nn.Module):
                 states: List[pt.Tensor],
                 vocab_slice_ids: Optional[pt.Tensor] = None) -> List[pt.Tensor]:
         target_embed = self.embedding_target(step_input.unsqueeze(1))
-        decoder_out, new_states = self.decoder(target_embed, states)
+        decoder_out, new_states, _ = self.decoder(target_embed, states)
         decoder_out = decoder_out.squeeze(1)
 
         # step_output: (batch_size, target_vocab_size or vocab_slice_ids)

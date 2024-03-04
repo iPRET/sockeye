@@ -458,12 +458,16 @@ def create_alignment_matrix(indexes, size):
         values.append(amounts[idx2])
 
     #Format indexes.
-    indexes = [(pair[1], pair[2]) for pair in indexes]
+    indexes = [(pair[1], pair[0]) for pair in indexes]
     indexes = torch.tensor(indexes).t().long()
 
-    result = torch.sparse_coo_tensor(indexes, values, size)
+    #CTI: Ok this is definitely some kind of abuse, and I need to make this cleaner.
+    coo_tensor = torch.sparse_coo_tensor(indexes, values, size)
+    tensor = coo_tensor.to_dense()
+    tensor = tensor.reshape([1, -1])
+    coo_tensor = tensor.to_sparse_coo()
 
-    return result
+    return coo_tensor
 
 class RawParallelDatasetLoader:
     #NOTE TO INGUS - Definitely will have to update this docstring.
@@ -513,7 +517,7 @@ class RawParallelDatasetLoader:
              source_iterables: Sequence[Iterable],
              target_iterables: Sequence[Iterable],
              num_samples_per_bucket: List[int],
-             alignment_matrix_iterable: Optional[Iterable]) -> 'ParallelDataSet':
+             alignment_matrix_iterable: Optional[Iterable] = None) -> 'ParallelDataSet':
 
         assert len(num_samples_per_bucket) == len(self.buckets)
         num_source_factors = len(source_iterables)
@@ -590,10 +594,15 @@ class RawParallelDatasetLoader:
         #CTI: make name of data_alignment_matrices more uniform.
         data_alignment_matrices = None
         if alignment_matrix_iterable is not None:
+            data_alignment_matrices = []
             for idx, bucket in enumerate(alignment_matrix_lists):
                 size = self.buckets[idx]
                 unstacked = [create_alignment_matrix(indexes, size) for indexes in bucket]
-                stacked = torch.stack(unstacked, dim=0)
+                if len(unstacked) == 0:
+                    stacked = C.NONE_TENSOR
+                else:
+                    stacked = torch.cat(unstacked, dim=0)
+                    stacked = stacked.to_sparse_csr()
                 data_alignment_matrices.append(stacked)
 
         if num_tokens_source > 0 and num_tokens_target > 0:
@@ -1402,7 +1411,7 @@ class AlignmentMatrixReader:
     #NOTE TO INGUS - Maybe the limits were here for a reason. See MetadataReader.
     def __iter__(self):
         with smart_open(self.path) as indata:
-            for line in enumerate(indata):
+            for line in indata:
                 data = decode_alignment_matrix(line)
                 yield data
 
@@ -1490,7 +1499,7 @@ def parallel_iterate(source_iterators: Sequence[Iterator[Optional[Any]]],
     check_condition(
         all(next(cast(Iterator, s), None) is None for s in source_iterators) and \
         all(next(cast(Iterator, t), None) is None for t in target_iterators) and \
-        (alignment_matrix_iterator is None or next(cast(Iterator, AlignmentMatrixReader), None) is None),
+        (alignment_matrix_iterator is None or next(cast(Iterator, alignment_matrix_iterator), None) is None),
         "Different number of lines in source(s) or target(s) or alignment matrices (if specified) iterables.")
 
 
@@ -1728,9 +1737,11 @@ class ParallelDataSet:
                                                                                         0, desired_indices)), dim=0)
                 if alignment_matrix is not None:
                     assert bucket_alignment_matrix is not None
-                    alignment_matrix[bucket_idx] = torch.cat((bucket_alignment_matrix,
+                    bucket_alignment_matrix = bucket_alignment_matrix.to_sparse_coo()
+                    bucket_alignment_matrix = torch.cat((bucket_alignment_matrix,
                                                                      torch.index_select(bucket_alignment_matrix,
                                                                                         0, desired_indices)), dim=0)
+                    alignment_matrix[bucket_idx] = bucket_alignment_matrix.to_sparse_csr()
 
         return ParallelDataSet(source, target, prepended_source_length, alignment_matrix)
 
@@ -1760,8 +1771,8 @@ class ParallelDataSet:
                                                                       0, permutation))
                 if self.alignment_matrix is not None:
                     assert alignment_matrix is not None
-                    alignment_matrix.append(torch.index_select(self.alignment_matrix[buck_idx],
-                                                                      0, permutation))
+                    tmp = self.alignment_matrix[buck_idx].to_sparse_coo()
+                    alignment_matrix.append(torch.index_select(tmp, 0, permutation).to_sparse_csr())
             else:
                 source.append(self.source[buck_idx])
                 target.append(self.target[buck_idx])
@@ -2090,6 +2101,30 @@ class ShardedParallelSampleIter(BaseParallelSampleIter):
         self._load_shard()
         self.shard_iter.load_state(fname + ".sharditer")
 
+def slice_csr_tensor(csr_tensor, f, t):
+    """
+    f - starting row index in slice.
+    t - ending (exclusive) row index in slice.
+    """
+    #CTI: This function is probably in the wrong place.
+    if not csr_tensor.is_sparse_csr:
+        raise ValueError("The tensor is not in CSR format. Please provide a CSR tensor.")
+
+    #CTI: maybe add more error checks and stuff for like being in range or smthn.
+
+    rows_indices = csr_tensor.crow_indices()[f:t + 1]
+    start_idx, end_idx = rows_indices[0], rows_indices[-1]
+    new_crow_indices = rows_indices - start_idx
+
+    new_col_indices = csr_tensor.col_indices()[start_idx:end_idx]
+    new_values = csr_tensor.values()[start_idx:end_idx]
+
+    new_csr_tensor = torch.sparse_csr_tensor(new_crow_indices, new_col_indices, new_values,
+                                             size=(t - f, csr_tensor.size(1)),
+                                             dtype=csr_tensor.dtype,
+                                             device=csr_tensor.device)
+
+    return new_csr_tensor
 
 class ParallelSampleIter(BaseParallelSampleIter):
     """
@@ -2172,8 +2207,12 @@ class ParallelSampleIter(BaseParallelSampleIter):
         target, label = create_target_and_shifted_label_sequences(self.data.target[i][j:j + batch_size])
         prepended_source_length = self.data.prepended_source_length[i][j:j + batch_size] \
             if self.data.prepended_source_length is not None else None
-        alignment_matrix = self.data.alignment_matrix[i][j:j + batch_size] \
-            if self.data.alignment_matrix is not None else None
+        if self.data.alignment_matrix is None:
+            alignment_matrix = None
+        else:
+            alignment_matrix = slice_csr_tensor(self.data.alignment_matrix[i], j, j + batch_size)
+            alignment_matrix = alignment_matrix.to_dense()
+            alignment_matrix = alignment_matrix.reshape([-1, self.buckets[i][1], self.buckets[i][0]])
         return create_batch_from_parallel_sample(source, target, label, prepended_source_length, alignment_matrix)
 
     def save_state(self, fname: str):
@@ -2230,7 +2269,6 @@ class Batch:
     samples: int
     tokens: int
     alignment_matrix: torch.Tensor = C.NONE_TENSOR
-    #CTI: Need to define NONE_TENSOR
     def load(self, device: torch.device) -> 'Batch':
         source = self.source.to(device)
         source_length = self.source_length.to(device)
@@ -2291,6 +2329,8 @@ def create_batch_from_parallel_sample(source: torch.Tensor,
         labels.update({C.TARGET_FACTOR_LABEL_NAME % i: label for i, label in enumerate(factor_labels, 1)})
 
     alignment_matrix = alignment_matrix if alignment_matrix is not None else C.NONE_TENSOR
+
+    labels['alignment_matrix_label'] = alignment_matrix
 
     return Batch(source, source_length, target, target_length, labels, samples, tokens,
                  alignment_matrix=alignment_matrix)
