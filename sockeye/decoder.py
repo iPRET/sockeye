@@ -302,6 +302,7 @@ class TransformerDecoder(Decoder):
         target = self.dropout(target)
 
         new_autoregr_states = []  # type: List[pt.Tensor]
+        res_attention = None
         for idx, (layer, layer_autoregr_state, layer_enc_att_kv) in enumerate(zip(self.layers, autoregr_states, enc_att_kv)):
             target, new_layer_autoregr_state, attention = layer(target=target,
                                                                 target_mask=target_mask,
@@ -309,6 +310,8 @@ class TransformerDecoder(Decoder):
                                                                 source_mask=source_mask_view,
                                                                 autoregr_states=layer_autoregr_state,
                                                                 enc_att_kv=layer_enc_att_kv)
+            if idx == self.config.attention_alignment_layer:
+                res_attention = attention
 
             new_autoregr_states += [*new_layer_autoregr_state]
 
@@ -325,8 +328,12 @@ class TransformerDecoder(Decoder):
         else:
             new_states = [steps, states[1], states[2]] + new_autoregr_states
 
-        return (target, new_states,
-                attention.reshape([target.shape[0], -1, attention.shape[1], attention.shape[2]])[:, 0])
+        if res_attention is not None:
+            res_attention = res_attention.reshape([target.shape[0], -1, res_attention.shape[1],
+                                                   res_attention.shape[2]])[:, 0]
+        #CTI: Gotta remove the return_attention parameter.
+
+        return (target, new_states, res_attention)
 
     def get_num_hidden(self):
         return self.config.model_size

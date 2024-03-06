@@ -568,7 +568,7 @@ class MultiHeadSelfAttention(MultiHeadAttentionBase, AutoregressiveLayer):
                 states = pt.cat((previous_states, states), dim=0)
 
             c, v = self._attend(queries=queries, key_values=states, mask=mask)
-            return c, v, states
+            return c, states
 
 
 class MultiHeadAttention(MultiHeadAttentionBase):
@@ -593,7 +593,8 @@ class MultiHeadAttention(MultiHeadAttentionBase):
                  depth_key_value: int = 512,
                  dtype: Optional[pt.dtype] = None,
                  clamp_to_dtype: bool = False,
-                 return_attention: bool = False) -> None:
+                 return_attention: bool = False,
+                 attention_alignment_layer: int = 0) -> None:
         super().__init__(depth_att, heads, depth_out, dropout, dtype, clamp_to_dtype)
         self.ff_q = pt.nn.Linear(in_features=depth_out, out_features=depth_att, bias=False, dtype=dtype)
         self.ff_kv = pt.nn.Linear(in_features=depth_key_value, out_features=depth_att * 2, bias=False, dtype=dtype)
@@ -603,6 +604,7 @@ class MultiHeadAttention(MultiHeadAttentionBase):
         # Interleaved format is used for inference, non-interleaved format is used for fused MHA in training.
         self.kv_interleaved = False
         self.return_attention = return_attention
+        self.attention_alignment_layer = attention_alignment_layer
 
     def separate_kv(self):
         """Writes kv input projection parameters in non-interleaved format (compatible with F.multi_head_attention). """
@@ -676,10 +678,7 @@ class MultiHeadAttention(MultiHeadAttentionBase):
                                                          q_proj_weight=self.ff_q.weight,
                                                          k_proj_weight=self.ff_kv.weight[:self.depth, :],
                                                          v_proj_weight=self.ff_kv.weight[self.depth:, :])
-            if not self.return_attention:
-                return contexts
-            else:
-                return contexts, attention
+            return contexts, attention
         else:  # during inference multi-head attention with interleaved key-value parameters is used
             queries = self.ff_q(queries)
             key_values = projected_memory_kv if projected_memory_kv is not None else self.ff_kv(key_values)

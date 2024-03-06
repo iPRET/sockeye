@@ -555,7 +555,8 @@ def create_decoder_config(args: argparse.Namespace,
         use_lhuc=args.lhuc is not None and (C.LHUC_DECODER in args.lhuc or C.LHUC_ALL in args.lhuc),
         depth_key_value=encoder_num_hidden,
         decoder_type=args.decoder,
-        use_glu=args.transformer_feed_forward_use_glu)
+        use_glu=args.transformer_feed_forward_use_glu,
+        attention_alignment_layer=args.attention_alignment_layer)
 
     return config_decoder
 

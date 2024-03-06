@@ -43,6 +43,7 @@ class TransformerConfig(config.Config):
     depth_key_value: int = 0
     use_glu: bool = False
     return_attention: bool = False
+    attention_alignment_layer: int = 0
 
 
 class TransformerEncoderBlock(pt.nn.Module):
@@ -104,7 +105,7 @@ class TransformerEncoderBlock(pt.nn.Module):
                          to mask self-attention scores. True for padding positions.
         """
         # self-attention
-        data_self_att, _, _ = self.self_attention(inputs=self.pre_self_attention(data),
+        data_self_att, _ = self.self_attention(inputs=self.pre_self_attention(data),
                                                previous_states=None,
                                                mask=att_mask,
                                                bias=None)
@@ -178,7 +179,8 @@ class TransformerDecoderBlock(pt.nn.Module):
                                                                depth_key_value=config.depth_key_value,
                                                                dtype=dtype,
                                                                clamp_to_dtype=clamp_to_dtype,
-                                                               return_attention=return_attention)
+                                                               return_attention=return_attention,
+                                                               attention_alignment_layer=config.attention_alignment_layer)
         self.post_enc_attention = TransformerProcessBlock(sequence=config.postprocess_sequence,
                                                           dropout=config.dropout_prepost,
                                                           num_hidden=config.model_size,
@@ -252,11 +254,7 @@ class TransformerDecoderBlock(pt.nn.Module):
                                               mask=source_mask,
                                               projected_memory_kv=enc_att_kv)
 
-        if self.return_attention and not self.inference_only:
-            target_enc_att, attention = attention_output
-        else:
-            target_enc_att = attention_output
-            attention = None
+        target_enc_att, attention = attention_output
 
         target = self.post_enc_attention(target_enc_att, target)
 
