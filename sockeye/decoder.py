@@ -302,7 +302,7 @@ class TransformerDecoder(Decoder):
         target = self.dropout(target)
 
         new_autoregr_states = []  # type: List[pt.Tensor]
-        res_attention = None
+        res_attention = pt.zeros(0)
         for idx, (layer, layer_autoregr_state, layer_enc_att_kv) in enumerate(zip(self.layers, autoregr_states, enc_att_kv)):
             target, new_layer_autoregr_state, attention = layer(target=target,
                                                                 target_mask=target_mask,
@@ -328,7 +328,9 @@ class TransformerDecoder(Decoder):
         else:
             new_states = [steps, states[1], states[2]] + new_autoregr_states
 
-        if res_attention is not None:
+        if res_attention is None:
+            res_attention = pt.zeros(0)
+        if res_attention.numel() != 0:
             res_attention = res_attention.reshape([target.shape[0], -1, res_attention.shape[1],
                                                    res_attention.shape[2]])[:, 0]
         #CTI: Gotta remove the return_attention parameter.

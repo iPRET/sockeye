@@ -678,6 +678,8 @@ class MultiHeadAttention(MultiHeadAttentionBase):
                                                          q_proj_weight=self.ff_q.weight,
                                                          k_proj_weight=self.ff_kv.weight[:self.depth, :],
                                                          v_proj_weight=self.ff_kv.weight[self.depth:, :])
+            if attention is None:
+                attention = pt.zeros(0)
             return contexts, attention
         else:  # during inference multi-head attention with interleaved key-value parameters is used
             queries = self.ff_q(queries)

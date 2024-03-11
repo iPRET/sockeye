@@ -2268,7 +2268,7 @@ class Batch:
     labels: Dict[str, torch.Tensor]
     samples: int
     tokens: int
-    alignment_matrix: torch.Tensor = C.NONE_TENSOR
+    alignment_matrix: torch.Tensor = torch.zeros(0)
     def load(self, device: torch.device) -> 'Batch':
         source = self.source.to(device)
         source_length = self.source_length.to(device)

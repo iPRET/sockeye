@@ -516,6 +516,7 @@ class TranslatorOutput:
     factor_scores: Optional[List[float]] = None
     nbest_factor_translations: Optional[List[List[str]]] = None
     nbest_factor_tokens: Optional[List[List[Tokens]]] = None
+    alignment_matrix: Optional[List[List[float]]] = None
 
     def json(self) -> Dict:
         """
@@ -550,6 +551,9 @@ class TranslatorOutput:
                 _d['translations_factors'].append(
                     {f'factor{i}': factor_translation for i, factor_translation in enumerate(factor_translations, 1)})
 
+        if self.alignment_matrix is not None:
+            _d['alignment_matrix'] = self.alignment_matrix
+
         return _d
 
 
@@ -565,6 +569,7 @@ class Translation:
     scores: List[float]
     nbest_translations: Optional[NBestTranslations] = None
     estimated_reference_length: Optional[float] = None
+    alignment_matrix: Optional[List[List[float]]] = None
 
 
 def empty_translation(add_nbest: bool = False) -> Translation:
@@ -643,11 +648,12 @@ def _reduce_nbest_translations(nbest_translations_list: List[Translation]) -> Tr
     scores = [translation.scores for translation in nbest_translations_list]
 
     nbest_translations = NBestTranslations(sequences, scores)
-
+    #CTI: Have to understand what in god's name this nbest shit is.
     return Translation(best_translation.target_ids,
                        best_translation.scores,
                        nbest_translations,
-                       best_translation.estimated_reference_length)
+                       best_translation.estimated_reference_length,
+                       alignment_matrix=best_translation.alignment_matrix)
 
 
 def _expand_nbest_translation(translation: Translation) -> List[Translation]:
@@ -1119,7 +1125,6 @@ class Translator:
         target_prefix_factors = utils.shift_prefix_factors(target_prefix_factors) \
             if target_prefix_factors is not None and \
                C.TARGET_FACTOR_SHIFT else target_prefix_factors
-
         return source, source_length, restrict_lexicon, max_out_lengths, target_prefix, target_prefix_factors
 
     def _get_translation_tokens_and_factors(self, target_ids: List[List[int]]) -> Tuple[List[str],
@@ -1196,14 +1201,15 @@ class Translator:
                                 factor_tokens=factor_tokens,
                                 factor_scores=translation.scores[1:],
                                 nbest_factor_translations=nbest_factor_translations,
-                                nbest_factor_tokens=nbest_factor_tokens)
+                                nbest_factor_tokens=nbest_factor_tokens,
+                                alignment_matrix=translation.alignment_matrix)
 
     def _translate_np(self,
                       source: pt.Tensor,
                       source_length: pt.Tensor,
                       restrict_lexicon: Optional[lexicon.RestrictLexicon],
                       max_output_lengths: pt.Tensor,
-                      alignment_matrix: Optional[pt.Tensor] = None,
+        #              alignment_matrix: Optional[pt.Tensor] = None,
                       target_prefix: Optional[pt.Tensor] = None,
                       target_prefix_factors: Optional[pt.Tensor] = None) -> List[Translation]:
         """
@@ -1219,6 +1225,8 @@ class Translator:
 
         :return: List of translations.
         """
+        #if target_prefix is not None or target_prefix_factors is not None:
+        #    print(2+2)
         return self._get_best_translations(self._search(source,
                                                         source_length,
                                                         restrict_lexicon,
@@ -1236,6 +1244,7 @@ class Translator:
         best_hyp_indices = result.best_hyp_indices.cpu().numpy()
         best_word_indices = result.best_word_indices.cpu().numpy()
         result_accumulated_scores_cpu = result.accumulated_scores.cpu()
+        attentions = result.hyp_attentions.cpu().numpy() if result.hyp_attentions is not None else None
         if self.dtype == pt.bfloat16:
             # NumPy does not currently support bfloat16. Use float32 instead.
             result_accumulated_scores_cpu = result_accumulated_scores_cpu.to(dtype=pt.float32)
@@ -1256,13 +1265,15 @@ class Translator:
             indices = self._get_best_word_indices_for_kth_hypotheses(best_ids, best_hyp_indices)  # type: ignore
             indices_shape_1 = indices.shape[1]  # pylint: disable=unsubscriptable-object
             nbest_translations.append(
-                    [self._assemble_translation(*x, unshift_target_factors=C.TARGET_FACTOR_SHIFT) for x in
+                    [self._assemble_translation(*x[:-1], unshift_target_factors=C.TARGET_FACTOR_SHIFT,
+                                                attention=x[-1]) for x in
                      zip(best_word_indices[indices,
                                            :,  # get all factors
                                            np.arange(indices_shape_1)],
                          lengths[best_ids],
                          accumulated_scores[best_ids],
-                         reference_lengths[best_ids])])  # type: ignore
+                         reference_lengths[best_ids],
+                         attentions[best_ids] if attentions is not None else [None for i in range(len(best_ids))])])  # type: ignore
 
         # reorder and regroup lists
         reduced_translations = [_reduce_nbest_translations(grouped_nbest) for grouped_nbest in zip(*nbest_translations)]  # type: ignore
@@ -1297,7 +1308,8 @@ class Translator:
                               length: np.ndarray,
                               seq_scores: np.ndarray,
                               estimated_reference_length: Optional[float],
-                              unshift_target_factors: bool = False) -> Translation:
+                              unshift_target_factors: bool = False,
+                              attention: Optional[np.ndarray] = None) -> Translation:
         """
         Takes a set of data pertaining to a single translated item, performs slightly different
         processing on each, and merges it into a Translation object.
@@ -1315,9 +1327,11 @@ class Translator:
         sequence = sequence[:length]  # type: ignore
         scores = seq_scores.tolist()
         estimated_reference_length = float(estimated_reference_length) if estimated_reference_length else None
+        attention = attention.tolist() if attention is not None else None
         return Translation(sequence, scores,  # type: ignore
                            nbest_translations=None,
-                           estimated_reference_length=estimated_reference_length)
+                           estimated_reference_length=estimated_reference_length,
+                           alignment_matrix=attention)
 
 
 def _unshift_target_factors(sequence: np.ndarray, fill_last_with: int = C.EOS_ID):

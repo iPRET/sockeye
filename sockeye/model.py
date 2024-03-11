@@ -299,8 +299,8 @@ class SockeyeModel(pt.nn.Module):
     def decode_step(self,
                     step_input: pt.Tensor,
                     states: List[pt.Tensor],
-                    vocab_slice_ids: Optional[pt.Tensor] = None) -> Tuple[pt.Tensor,pt.Tensor, List[pt.Tensor],
-                                                                          List[pt.Tensor]]:
+                    vocab_slice_ids: Optional[pt.Tensor] = None) -> Tuple[pt.Tensor, pt.Tensor, List[pt.Tensor],
+                                                                          List[pt.Tensor], pt.Tensor]:
         """
         One step decoding of the translation model.
 
@@ -324,7 +324,7 @@ class SockeyeModel(pt.nn.Module):
                                                 self.knn)
             self.traced_decode_step = pt.jit.trace(decode_step_module, decode_step_inputs)
         # the traced module returns a flat list of tensors
-        decode_step_outputs = self.traced_decode_step(*decode_step_inputs)
+        decode_step_outputs, attention = self.traced_decode_step(*decode_step_inputs)
         # +1 for the decoder output, which will be used to generate kNN output
         step_output, decoder_out, *target_factor_outputs = decode_step_outputs[:self.num_target_factors + 1]
 
@@ -332,7 +332,7 @@ class SockeyeModel(pt.nn.Module):
         knn_output = self.knn(decoder_out) if self.knn is not None else None
 
         new_states = decode_step_outputs[self.num_target_factors + 1:]
-        return step_output, knn_output, new_states, target_factor_outputs
+        return step_output, knn_output, new_states, target_factor_outputs, attention
 
     def forward(self, source, source_length, target, target_length, alignment_matrix):  # pylint: disable=arguments-differ
         # When updating only the decoder (specified directly or implied by
@@ -352,7 +352,8 @@ class SockeyeModel(pt.nn.Module):
         #CTI: which would run the model with full context?
         forward_output = dict()
 
-        forward_output['attention'] = attention
+        if attention is not None:
+            forward_output['attention'] = attention
 
         forward_output[C.LOGITS_NAME] = self.output_layer(target, None)
 
@@ -647,7 +648,7 @@ class _DecodeStep(pt.nn.Module):
                  decoder: decoder.Decoder,
                  output_layer: layers.OutputLayer,
                  factor_output_layers: pt.nn.ModuleList,
-                 knn : Optional[layers.KNN] = None):
+                 knn : Optional[layers.KNN] = C.NONE_TENSOR):
         super().__init__()
         self.embedding_target = embedding_target
         self.decoder = decoder
@@ -659,9 +660,9 @@ class _DecodeStep(pt.nn.Module):
     def forward(self,
                 step_input,
                 states: List[pt.Tensor],
-                vocab_slice_ids: Optional[pt.Tensor] = None) -> List[pt.Tensor]:
+                vocab_slice_ids: Optional[pt.Tensor] = None) -> Tuple[List[pt.Tensor], pt.Tensor]:
         target_embed = self.embedding_target(step_input.unsqueeze(1))
-        decoder_out, new_states, _ = self.decoder(target_embed, states)
+        decoder_out, new_states, attention = self.decoder(target_embed, states)
         decoder_out = decoder_out.squeeze(1)
 
         # step_output: (batch_size, target_vocab_size or vocab_slice_ids)
@@ -673,7 +674,7 @@ class _DecodeStep(pt.nn.Module):
         if self.has_target_factors:
             outputs += [fol(decoder_out) for fol in self.factor_output_layers]
         outputs += new_states
-        return outputs
+        return outputs, attention
 
 
 def initialize_parameters(module: pt.nn.Module):

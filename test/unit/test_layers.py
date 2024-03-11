@@ -146,10 +146,10 @@ def test_interleaved_multihead_attention(qlen, kvlen, batch_size, hidden, heads)
     mha = sockeye.layers.MultiHeadAttention(hidden, heads, hidden, dropout=0.0, depth_key_value=hidden)
     mha.train()
     assert not mha.kv_interleaved
-    r_train = mha(queries_pt, memory_pt, mask=None, projected_memory_kv=None)
+    r_train, _ = mha(queries_pt, memory_pt, mask=None, projected_memory_kv=None)
     mha.eval()
     assert mha.kv_interleaved
-    r_test = mha(queries_pt, memory_pt, mask=None, projected_memory_kv=None)
+    r_test, _ = mha(queries_pt, memory_pt, mask=None, projected_memory_kv=None)
     assert pt.allclose(r_train, r_test, atol=1e-06)
 
     # test with mask
@@ -160,10 +160,10 @@ def test_interleaved_multihead_attention(qlen, kvlen, batch_size, hidden, heads)
     mask = mask.repeat(1, qlen, 1)  # Shape: (batch *h heads, qlen, kvlen)
     mha.train()
     assert not mha.kv_interleaved
-    r_train = mha(queries_pt, memory_pt, mask=mask, projected_memory_kv=None)
+    r_train, _ = mha(queries_pt, memory_pt, mask=mask, projected_memory_kv=None)
     mha.eval()
     assert mha.kv_interleaved
-    r_test = mha(queries_pt, memory_pt, mask=mask, projected_memory_kv=None)
+    r_test, _ = mha(queries_pt, memory_pt, mask=mask, projected_memory_kv=None)
     assert pt.allclose(r_train, r_test, atol=1e-06)
 
 
