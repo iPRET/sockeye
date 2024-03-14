@@ -1171,6 +1171,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
             training_model = torch.jit.trace(training_model, (batch.source, batch.source_length,
                                                              batch.target, batch.target_length,
                                                              batch.alignment_matrix), strict=False)
+            #pass
         eval_iter.reset()
 
     if utils.is_distributed() and not utils.using_deepspeed():

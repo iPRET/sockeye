@@ -311,13 +311,14 @@ class DotAttentionCell(pt.nn.Module):
             logits = logits.masked_fill(mask, -C.LARGE_VALUES[logits.dtype])
 
         probs = F.softmax(logits, dim=-1)
+        attentions = probs
 
         probs = self.dropout(probs) if self.dropout is not None else probs
 
         # key_values: (lk, n, dv * 2)
         # probs: (n*h, lq, lk)
         # result: (n, lq, dv)
-        return interleaved_matmul_encdec_valatt(key_values, probs, heads=self.heads), probs
+        return interleaved_matmul_encdec_valatt(key_values, probs, heads=self.heads), attentions
 
 
 def prepare_source_length_mask(lengths: pt.Tensor, heads: int, max_length: int, expand: bool = True,

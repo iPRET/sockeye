@@ -985,7 +985,7 @@ class BeamSearch(Search):
                 target_prefix_factors, self.output_factor_vocab_size, self.dtype)
             target_prefix_factor_masks = target_prefix_factor_masks.unsqueeze(2).expand(-1, -1, self.beam_size, -1, -1)
 
-        hyp_attentions = [[] for i in range(self.beam_size)]
+        hyp_attentions = [[] for i in range(batch_size * self.beam_size)]
 
         t = 1
         for t in range(1, max_iterations + 1):  # max_iterations + 1 required to get correct results
@@ -1003,7 +1003,7 @@ class BeamSearch(Search):
                                                                                      self.output_factor_vocab_size)
 
             if attention.numel() != 0:
-                for i in range(self.beam_size):
+                for i in range(batch_size * self.beam_size):
                     hyp_attentions[i].append(attention[i][0])
             else:
                 hyp_attentions = None
@@ -1040,7 +1040,7 @@ class BeamSearch(Search):
                     best_hyp_indices = best_hyp_indices + offset
 
             if hyp_attentions is not None:
-                hyp_attentions = [list(hyp_attentions[best_hyp_indices[i]]) for i in range(self.beam_size)]
+                hyp_attentions = [list(hyp_attentions[best_hyp_indices[i]]) for i in range(batch_size * self.beam_size)]
 
             # Map from restricted to full vocab ids if needed
             if vocab_slice_ids is not None:

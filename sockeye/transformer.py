@@ -175,7 +175,7 @@ class TransformerDecoderBlock(pt.nn.Module):
         self.enc_attention = sockeye.layers.MultiHeadAttention(depth_att=config.model_size,
                                                                heads=config.attention_heads,
                                                                depth_out=config.model_size,
-                                                               dropout=config.dropout_attention,
+                                                               dropout=config.dropout_attention if not return_attention else 0.0,
                                                                depth_key_value=config.depth_key_value,
                                                                dtype=dtype,
                                                                clamp_to_dtype=clamp_to_dtype,

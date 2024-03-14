@@ -164,13 +164,16 @@ class TransformerDecoder(Decoder):
                                                          dtype=dtype)
         self.autoregressive_mask = transformer.AutoRegressiveMask()
 
+        module_list = []
+        for layer in range(config.num_layers):
+            return_attention = True if layer == config.attention_alignment_layer else False
+            module_list.append(transformer.TransformerDecoderBlock(
+                config,
+                inference_only=inference_only,
+                dtype=dtype,
+                return_attention=return_attention))
         self.layers = pt.nn.ModuleList(  # using ModuleList because we have additional inputs
-            transformer.TransformerDecoderBlock(config,
-                                                inference_only=inference_only,
-                                                dtype=dtype,
-                                                clamp_to_dtype=clamp_to_dtype,
-                                                return_attention=return_attention)
-            for _ in range(config.num_layers))
+            module_list)
         #CTI: Probably gotta make it so that only the correct attention is returned.
 
         self.final_process = transformer.TransformerProcessBlock(sequence=config.preprocess_sequence,
@@ -312,6 +315,8 @@ class TransformerDecoder(Decoder):
                                                                 enc_att_kv=layer_enc_att_kv)
             if idx == self.config.attention_alignment_layer:
                 res_attention = attention
+                res_attention = res_attention.reshape([batch, -1, target_max_len,
+                                                       source_max_len])[:, 0]
 
             new_autoregr_states += [*new_layer_autoregr_state]
 
@@ -330,9 +335,6 @@ class TransformerDecoder(Decoder):
 
         if res_attention is None:
             res_attention = pt.zeros(0)
-        if res_attention.numel() != 0:
-            res_attention = res_attention.reshape([target.shape[0], -1, res_attention.shape[1],
-                                                   res_attention.shape[2]])[:, 0]
         #CTI: Gotta remove the return_attention parameter.
 
         return (target, new_states, res_attention)
