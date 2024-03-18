@@ -984,7 +984,7 @@ class BeamSearch(Search):
                 target_prefix_factors, self.output_factor_vocab_size, self.dtype)
             target_prefix_factor_masks = target_prefix_factor_masks.unsqueeze(2).expand(-1, -1, self.beam_size, -1, -1)
 
-        hyp_attentions = pt.zeros([batch_size * self.beam_size, 0, source_length.max()])
+        hyp_attentions = pt.zeros([batch_size * self.beam_size, 0, source_length.max()], device=self.device)
 
         t = 1
         for t in range(1, max_iterations + 1):  # max_iterations + 1 required to get correct results
