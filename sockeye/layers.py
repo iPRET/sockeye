@@ -571,6 +571,28 @@ class MultiHeadSelfAttention(MultiHeadAttentionBase, AutoregressiveLayer):
             c, v = self._attend(queries=queries, key_values=states, mask=mask)
             return c, states
 
+import math
+def single_head_attention(query: pt.Tensor,
+                          key: pt.Tensor,
+                          q_proj_weight: pt.Tensor,
+                          k_proj_weight: pt.Tensor,
+                          attn_mask: Optional[pt.Tensor] = None) -> pt.Tensor:
+    """
+    All this function does is just calculate attention for a single attention head.
+    Care I do not.
+    """
+    q = F.linear(query, q_proj_weight, None).transpose(0, 1)
+    k = F.linear(key, k_proj_weight, None).transpose(0, 1)
+    L, S = q.size(-2), k.size(-2)
+    scale_factor = 1 / math.sqrt(q.size(-1))
+    attn_bias = pt.zeros(L, S, dtype=q.dtype)
+    if attn_mask is not None:
+        attn_bias.masked_fill_(attn_mask, float("-inf"))
+    attn_weight = q @ k.transpose(-2, -1) * scale_factor
+    attn_weight += attn_bias
+    attn_weight = pt.softmax(attn_weight, dim=-1)
+    return attn_weight
+
 
 class MultiHeadAttention(MultiHeadAttentionBase):
     """
@@ -662,7 +684,8 @@ class MultiHeadAttention(MultiHeadAttentionBase):
         if self.training:  # use fused multi-head attention op during training
             assert not self.kv_interleaved
             assert projected_memory_kv is None, "caching not supported in training"
-            contexts, attention = F.multi_head_attention_forward(query=queries, key=key_values, value=key_values,
+            attention = None
+            contexts, _ = F.multi_head_attention_forward(query=queries, key=key_values, value=key_values,
                                                          embed_dim_to_check=self.depth, num_heads=self.heads,
                                                          in_proj_weight=None,
                                                          in_proj_bias=None,
@@ -672,13 +695,22 @@ class MultiHeadAttention(MultiHeadAttentionBase):
                                                          out_proj_bias=self.ff_out.bias,
                                                          training=self.training,
                                                          key_padding_mask=None,
-                                                         need_weights=self.return_attention,
+                                                         need_weights=False,
                                                          average_attn_weights=False,
                                                          attn_mask=mask,
                                                          use_separate_proj_weight=True,
                                                          q_proj_weight=self.ff_q.weight,
                                                          k_proj_weight=self.ff_kv.weight[:self.depth, :],
                                                          v_proj_weight=self.ff_kv.weight[self.depth:, :])
+
+            if self.return_attention:
+                roi = self.ff_kv.weight.shape[1] // self.heads
+                attention = single_head_attention(query=queries,
+                                                  key=key_values,
+                                                  attn_mask=mask[0] if mask is not None else None,
+                                                  q_proj_weight=self.ff_q.weight[:roi, :],
+                                                  k_proj_weight=self.ff_kv.weight[:self.depth, :][:roi])
+
             if attention is None:
                 attention = pt.zeros(0)
             return contexts, attention
