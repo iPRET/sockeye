@@ -411,12 +411,17 @@ class AlignmentMatrixKLDivergenceLoss(Loss):
 
         #CTI: gotta probably pass the pre-softmax loss instead of post softmax.
         #CTI: rename attention to logits or whatver makes sense.
+        #This is in case we have alignments during training but don't have them for testing.
+        res_device = attention_probs.device
+        if alignment_matrix.numel() == 0:
+            return pt.zeros(1, device=res_device), pt.ones(1, device=res_device)
+
         loss = -(alignment_matrix * pt.log(attention_probs + 1e-8)).sum(dim=2).sum(dim=1) / alignment_matrix.shape[1]
-        num_samples = pt.ones_like(loss).sum()
+        num_samples = pt.ones(1, device=res_device)
         loss = loss * self.weight
         loss = loss.mean()
 
         return loss, num_samples
 
     def create_metric(self) -> 'LossMetric':
-        return LossMetric(name=C.LENRATIO_MSE)
+        return LossMetric(name='alignment-matrix-cross-entropy')
