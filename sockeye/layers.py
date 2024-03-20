@@ -585,7 +585,7 @@ def single_head_attention(query: pt.Tensor,
     k = F.linear(key, k_proj_weight, None).transpose(0, 1)
     L, S = q.size(-2), k.size(-2)
     scale_factor = 1 / math.sqrt(q.size(-1))
-    attn_bias = pt.zeros(L, S, dtype=q.dtype)
+    attn_bias = pt.zeros(L, S, dtype=q.dtype, device=q.device)
     if attn_mask is not None:
         attn_bias.masked_fill_(attn_mask, float("-inf"))
     attn_weight = q @ k.transpose(-2, -1) * scale_factor
