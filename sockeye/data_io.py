@@ -460,6 +460,8 @@ def create_alignment_matrix(indexes, size):
     #Format indexes.
     indexes = [(pair[1], pair[0]) for pair in indexes]
     indexes = torch.tensor(indexes).t().long()
+    if indexes.numel() == 0:
+        indexes = torch.zeros([2, 0]).long()
 
     #CTI: Ok this is definitely some kind of abuse, and I need to make this cleaner.
     coo_tensor = torch.sparse_coo_tensor(indexes, values, size)
