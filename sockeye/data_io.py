@@ -1558,6 +1558,29 @@ def decode_alignment_matrix(line: str):
     index_pairs = [(indexes[i], indexes[i + 1]) for i in range(0, len(indexes), 2)]
     return index_pairs
 
+def slice_csr_tensor(tens, start, end):
+    """
+    Function slices CSR tensor along dense (the row dimension, i.e. shape[0]) dimension.
+    tens - 2D sparse CSR tensor.
+    start - slice beginning index (inclusive).
+    end - slice end index (exclusive).
+    """
+    crow_indices = tens.crow_indices()
+    col_indices = tens.col_indices()
+    values = tens.values()
+
+    start_crow = crow_indices[start]
+    end_crow = crow_indices[end]
+
+    result_col_indices = col_indices[start_crow:end_crow]
+    result_values = values[start_crow:end_crow]
+    result_crow_indices = crow_indices[start:end+1] - start_crow
+    result_size = (end - start, tens.size(1))
+
+    result = torch.sparse_csr_tensor(result_crow_indices, result_col_indices, result_values, size=result_size,
+                                     dtype=tens.dtype)
+    return result
+
 class ParallelDataSet:
     """
     Bucketed parallel data set
@@ -1669,7 +1692,7 @@ class ParallelDataSet:
                                            if l.shape[0] > 0
                                            else l for l in prepended_source_length]
             if alignment_matrix is not None:
-                alignment_matrix = [am[math.floor(i * am.shape[0]):math.floor(j * am.shape[0])]
+                alignment_matrix = [slice_csr_tensor(am, math.floor(i * am.shape[0]), math.floor(j * am.shape[0]))
                                     if am.shape[0] > 0
                                     else am for am in alignment_matrix]
         # Sanity checks
