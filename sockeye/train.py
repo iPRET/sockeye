@@ -789,7 +789,7 @@ def create_losses(args: argparse.Namespace, all_num_classes: List[int]) -> List[
                                                   metric_prefix="bow")
         losses.append(bow_loss)
 
-    if args.alignment_matrix:
+    if args.return_attention:
         kldiv = loss.AlignmentMatrixKLDivergenceLoss()
 
         losses.append(kldiv)
