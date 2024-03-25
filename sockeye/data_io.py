@@ -378,14 +378,15 @@ def create_shards(source_fnames: List[str],
                             for f in range(len(target_fnames))]
     alignment_matrix_shard_fnames = [os.path.join(output_prefix, C.SHARD_ALGNMENT_MATRIX % i) for i in range(num_shards)] \
         if alignment_matrix_fname is not None else []
+    #CTI: ^Fix this bug.
 
     with ExitStack() as exit_stack:
         sources_shards = [[exit_stack.enter_context(smart_open(f, mode="wb")) for f in sources_shard_fnames[i]] for i in
                           range(len(source_fnames))]
         targets_shards = [[exit_stack.enter_context(smart_open(f, mode="wb")) for f in targets_shard_fnames[i]] for i in
                           range(len(target_fnames))]
-        alignment_matrices_shards = [exit_stack.enter_context(smart_open(f, mode="wb"))
-                                     for f in alignment_matrix_shard_fnames]
+        alignment_matrix_shards = [exit_stack.enter_context(smart_open(f, mode="wb"))
+                                   for f in alignment_matrix_shard_fnames]
 
         source_readers = [exit_stack.enter_context(smart_open(f, mode="rb")) for f in source_fnames]
         target_readers = [exit_stack.enter_context(smart_open(f, mode="rb")) for f in target_fnames]
@@ -407,7 +408,7 @@ def create_shards(source_fnames: List[str],
                 file = targets_shards[i][random_shard_index]
                 file.write(line)
             if alignment_matrices is not None:
-                file = alignment_matrices_shards[random_shard_index]
+                file = alignment_matrix_shards[random_shard_index]
                 file.write(alignment_matrices)
     sources_shard_fnames_by_shards = zip(*sources_shard_fnames)
     targets_shard_fnames_by_shards = zip(*targets_shard_fnames)
@@ -433,13 +434,14 @@ def get_prepended_token_length(ids: List[int], eop_id: int) -> int:
         # the end-of-prepending tag is not in the token list
         return 0
 
-#This function may need to be in a different place.
+#CTI: This function may need to be in a different place.
 def create_alignment_matrix(indexes, size):
     #CTI: Needs better description.
     """
     Creates a sparse alignment matrix from a list of indexes,
     e.g. indexes = [(1, 2), (1, 3), (2, 5), ...]
     I'll assume the tuples are (source idx, target idx).
+    Returns sparse_coo_tensor of shape size.
     """
     #CTI: Fix the comments.
     #CTI: Make this code cleaner.
@@ -529,8 +531,7 @@ class RawParallelDatasetLoader:
                        for (source_len, _), num_samples in zip(self.buckets, num_samples_per_bucket)]
         data_target = [np.full((num_samples, target_len + 1, num_target_factors), self.pad_id, dtype=self.dtype)
                        for (_, target_len), num_samples in zip(self.buckets, num_samples_per_bucket)]
-        #CTI: Refactor alignment_matrix_lists to data_alignmet_matrix
-        alignment_matrix_lists = [[] for _ in self.buckets] if alignment_matrix_iterable is not None else None
+        data_alignment_matrix = [[] for _ in self.buckets] if alignment_matrix_iterable is not None else None
 
         data_prepended_source_length = \
             [np.full((num_samples,), 0, dtype=self.dtype) for num_samples in num_samples_per_bucket] \
@@ -581,7 +582,7 @@ class RawParallelDatasetLoader:
                                                                                                     self.eop_id)
             if alignment_matrix_iterable is not None:
                 # Tuple of metadata (ids, weights)
-                alignment_matrix_lists[buck_index].append(alignment_matrix)
+                data_alignment_matrix[buck_index].append(alignment_matrix)
 
             bucket_sample_index[buck_index] += 1
 
@@ -594,10 +595,10 @@ class RawParallelDatasetLoader:
             if data_prepended_source_length is not None else None
 
         #CTI: make name of data_alignment_matrices more uniform.
-        data_alignment_matrices = None
+        data_alignment_matrix_tensors = None
         if alignment_matrix_iterable is not None:
-            data_alignment_matrices = []
-            for idx, bucket in enumerate(alignment_matrix_lists):
+            data_alignment_matrix_tensors = []
+            for idx, bucket in enumerate(data_alignment_matrix):
                 size = self.buckets[idx]
                 unstacked = [create_alignment_matrix(indexes, size) for indexes in bucket]
                 if len(unstacked) == 0:
@@ -605,7 +606,7 @@ class RawParallelDatasetLoader:
                 else:
                     stacked = torch.cat(unstacked, dim=0)
                     stacked = stacked.to_sparse_csr()
-                data_alignment_matrices.append(stacked)
+                data_alignment_matrix_tensors.append(stacked)
 
         if num_tokens_source > 0 and num_tokens_target > 0:
             logger.info("Created bucketed parallel data set. Introduced padding: source=%.1f%% target=%.1f%%)",
@@ -613,7 +614,7 @@ class RawParallelDatasetLoader:
                         num_pad_target / num_tokens_target * 100)
 
         return ParallelDataSet(data_source_tensors, data_target_tensors, data_prepended_source_length_tensors,
-                               data_alignment_matrices)
+                               data_alignment_matrix_tensors)
 
 
 def get_num_shards(num_samples: int, samples_per_shard: int, min_num_shards: int) -> int:
@@ -639,7 +640,7 @@ def save_shard(shard_idx: int,
                buckets: List[Tuple[int, int]],
                output_prefix: str,
                keep_tmp_shard_files: bool,
-               shard_alignment_matrix: Optional[List[str]] = None):
+               shard_alignment_matrix: Optional[str] = None):
     #CTI: Update doc.
     """
     Load raw shard source and target data files, map to integers using the corresponding vocabularies,
@@ -729,7 +730,7 @@ def prepare_data(source_fnames: List[str],
                  end_of_prepending_tag: Optional[str] = None,
                  keep_tmp_shard_files: bool = False,
                  pool: multiprocessing.pool.Pool = None,
-                 shards: List[Tuple[Tuple[str, ...], Tuple[str, ...], str]] = None):
+                 shards: List[Tuple[Tuple[str, ...], Tuple[str, ...], Optional[str]]] = None):
     """
     :param shards: List of num_shards shards of parallel source and target tuples which in turn contain tuples to shard
                    data factor file paths.
@@ -771,8 +772,8 @@ def prepare_data(source_fnames: List[str],
     # Process shards in parallel
     args = ((shard_idx, data_loader, shard_sources, shard_targets, source_vocabs, target_vocabs,
              length_statistics.length_ratio_mean, length_statistics.length_ratio_std, buckets, output_prefix,
-             keep_tmp_shard_files, shard_alignment_matrices)
-            for shard_idx, (shard_sources, shard_targets, shard_alignment_matrices) in enumerate(shards))
+             keep_tmp_shard_files, shard_alignment_matrix)
+            for shard_idx, (shard_sources, shard_targets, shard_alignment_matrix) in enumerate(shards))
     per_shard_statistics = pool.starmap(save_shard, args)
 
     # Combine per shard statistics to obtain global statistics
@@ -876,7 +877,7 @@ def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
                              max_seq_len_target: int,
                              batch_size: int,
                              permute: bool = False,
-                             validation_alignment_matrices: Optional[str] = None) -> 'ParallelSampleIter':
+                             validation_alignment_matrix: Optional[str] = None) -> 'ParallelSampleIter':
     """
     Returns a ParallelSampleIter for the validation data.
     """
@@ -895,9 +896,9 @@ def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
                                                                                          validation_targets,
                                                                                          source_vocabs, target_vocabs)
     #CTI: I gotta rename this more uniformly.
-    validation_alignment_matrices_iterable = None
-    if validation_alignment_matrices is not None:
-        validation_alignment_matrices_iterable = AlignmentMatrixReader(validation_alignment_matrices)
+    validation_alignment_matrix_iterable = None
+    if validation_alignment_matrix is not None:
+        validation_alignment_matrix_iterable = AlignmentMatrixReader(validation_alignment_matrix)
 
     validation_data_statistics = get_data_statistics(validation_sources_sentences,
                                                      validation_targets_sentences,
@@ -910,7 +911,7 @@ def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
 
     validation_data = (data_loader.load(validation_sources_sentences, validation_targets_sentences,
                                         validation_data_statistics.num_sents_per_bucket,
-                                        alignment_matrix_iterable=validation_alignment_matrices_iterable)
+                                        alignment_matrix_iterable=validation_alignment_matrix_iterable)
                        .fill_up(bucket_batch_sizes))
 
     return ParallelSampleIter(data=validation_data,
@@ -930,7 +931,7 @@ def get_prepared_data_iters(prepared_data_dir: str,
                             batch_type: str,
                             batch_sentences_multiple_of: int = 1,
                             permute: bool = True,
-                            validation_alignment_matrices: Optional[str] = None) -> Tuple['BaseParallelSampleIter',
+                            validation_alignment_matrix: Optional[str] = None) -> Tuple['BaseParallelSampleIter',
                                                                                           'BaseParallelSampleIter',
                                                                                           'DataConfig',
                                                                                           List[vocab.Vocab],
@@ -1003,18 +1004,12 @@ def get_prepared_data_iters(prepared_data_dir: str,
 
     # Don't shuffle validation data. Different orders can cause different
     # evaluation results.
-    validation_iter = get_validation_data_iter(data_loader=data_loader,
-                                               validation_sources=validation_sources,
-                                               validation_targets=validation_targets,
-                                               validation_alignment_matrices=validation_alignment_matrices,
-                                               buckets=buckets,
-                                               bucket_batch_sizes=bucket_batch_sizes,
-                                               source_vocabs=source_vocabs,
-                                               target_vocabs=target_vocabs,
-                                               max_seq_len_source=max_seq_len_source,
-                                               max_seq_len_target=max_seq_len_target,
-                                               batch_size=batch_size,
-                                               permute=False)
+    validation_iter = get_validation_data_iter(data_loader=data_loader, validation_sources=validation_sources,
+                                               validation_targets=validation_targets, buckets=buckets,
+                                               bucket_batch_sizes=bucket_batch_sizes, source_vocabs=source_vocabs,
+                                               target_vocabs=target_vocabs, max_seq_len_source=max_seq_len_source,
+                                               max_seq_len_target=max_seq_len_target, batch_size=batch_size,
+                                               permute=False, validation_alignment_matrix=validation_alignment_matrix)
 
     return train_iter, validation_iter, config_data, source_vocabs, target_vocabs
 
@@ -1037,8 +1032,8 @@ def get_training_data_iters(sources: List[str],
                             end_of_prepending_tag: Optional[str] = None,
                             allow_empty: bool = False,
                             batch_sentences_multiple_of: int = 1,
-                            alignment_matrices: Optional[str] = None,
-                            validation_alignment_matrices: Optional[str] = None,
+                            alignment_matrix: Optional[str] = None,
+                            validation_alignment_matrix: Optional[str] = None,
                             permute: bool = True) -> Tuple['BaseParallelSampleIter', Optional['BaseParallelSampleIter'],
                                                            'DataConfig', 'DataInfo']:
     #CTI: Update docs.
@@ -1089,8 +1084,8 @@ def get_training_data_iters(sources: List[str],
     sources_sentences, targets_sentences = create_sequence_readers(sources, targets, source_vocabs, target_vocabs)
 
     alignment_matrix_iterable = None  # type: Optional[AlignmentMatrixReader]
-    if (alignment_matrices is not None) or (validation_alignment_matrices is not None):
-        alignment_matrix_iterable = AlignmentMatrixReader(alignment_matrices)
+    if (alignment_matrix is not None) or (validation_alignment_matrix is not None):
+        alignment_matrix_iterable = AlignmentMatrixReader(alignment_matrix)
 
     # Pass 2: Get data statistics and determine the number of data points for each bucket.
     data_statistics = get_data_statistics(sources_sentences, targets_sentences, buckets,
@@ -1140,18 +1135,12 @@ def get_training_data_iters(sources: List[str],
 
     # Don't shuffle validation data. Different orders can cause different
     # evaluation results.
-    validation_iter = get_validation_data_iter(data_loader=data_loader,
-                                               validation_sources=validation_sources,
-                                               validation_targets=validation_targets,
-                                               validation_alignment_matrices=validation_alignment_matrices,
-                                               buckets=buckets,
-                                               bucket_batch_sizes=bucket_batch_sizes,
-                                               source_vocabs=source_vocabs,
-                                               target_vocabs=target_vocabs,
-                                               max_seq_len_source=max_seq_len_source,
-                                               max_seq_len_target=max_seq_len_target,
-                                               batch_size=batch_size,
-                                               permute=False)
+    validation_iter = get_validation_data_iter(data_loader=data_loader, validation_sources=validation_sources,
+                                               validation_targets=validation_targets, buckets=buckets,
+                                               bucket_batch_sizes=bucket_batch_sizes, source_vocabs=source_vocabs,
+                                               target_vocabs=target_vocabs, max_seq_len_source=max_seq_len_source,
+                                               max_seq_len_target=max_seq_len_target, batch_size=batch_size,
+                                               permute=False, validation_alignment_matrix=validation_alignment_matrix)
 
     return train_iter, validation_iter, config_data, data_info
 
@@ -1164,7 +1153,7 @@ def get_scoring_data_iters(sources: List[str],
                            max_seq_len_source: int,
                            max_seq_len_target: int,
                            eop_id: int = C.INVALID_ID,
-                           alignment_matrices: Optional[str] = None) -> 'BaseParallelSampleIter':
+                           alignment_matrix: Optional[str] = None) -> 'BaseParallelSampleIter':
     #CTI: Update doc.
     """
     Returns a data iterator for scoring. The iterator loads data on demand,
@@ -1196,17 +1185,12 @@ def get_scoring_data_iters(sources: List[str],
                                            skip_blanks=False)
 
     # ...one iterator to traverse them all,
-    scoring_iter = BatchedRawParallelSampleIter(data_loader=data_loader,
-                                                sources=sources,
-                                                targets=targets,
-                                                alignment_matrices=alignment_matrices,
-                                                source_vocabs=source_vocabs,
-                                                target_vocabs=target_vocabs,
-                                                bucket=bucket,
+    scoring_iter = BatchedRawParallelSampleIter(data_loader=data_loader, sources=sources, targets=targets,
+                                                source_vocabs=source_vocabs, target_vocabs=target_vocabs, bucket=bucket,
                                                 batch_size=batch_size,
                                                 max_lens=(max_seq_len_source, max_seq_len_target),
-                                                num_source_factors=len(sources),
-                                                num_target_factors=len(targets))
+                                                num_source_factors=len(sources), num_target_factors=len(targets),
+                                                alignment_matrix=alignment_matrix)
 
     # and with the model appraise them.
     return scoring_iter
@@ -1414,7 +1398,7 @@ class AlignmentMatrixReader:
     def __iter__(self):
         with smart_open(self.path) as indata:
             for line in indata:
-                data = decode_alignment_matrix(line)
+                data = parse_alignment_matrix_indices(line)
                 yield data
 
 def create_sequence_readers(sources: List[str], targets: List[str],
@@ -1498,6 +1482,7 @@ def parallel_iterate(source_iterators: Sequence[Iterator[Optional[Any]]],
     if num_skipped > 0:
         logger.warning("Parallel reading of sequences skipped %d elements", num_skipped)
 
+    #CTI: Doublecheck the following couple of lines make sense.
     check_condition(
         all(next(cast(Iterator, s), None) is None for s in source_iterators) and \
         all(next(cast(Iterator, t), None) is None for t in target_iterators) and \
@@ -1542,12 +1527,10 @@ def get_target_bucket(buckets: List[Tuple[int, int]],
             break
     return bucket_idx, bucket
 
-#TODO: compute_slice_indices_from_sequence_lengths
-
 #NOTE TO INGUS - Probably gotta add a return type to the function.
 #also the location of this function is probably not correct.
 import re
-def decode_alignment_matrix(line: str):
+def parse_alignment_matrix_indices(line: str):
     #NOTE TO INGUS - make a better description.
     """
     Turns string e.g. "4-3 2-1    \t4-3"
@@ -1564,6 +1547,7 @@ def slice_csr_tensor(tens, start, end):
     tens - 2D sparse CSR tensor.
     start - slice beginning index (inclusive).
     end - slice end index (exclusive).
+    Runtime is proportional to amount of non-zero values in result slice.
     """
     crow_indices = tens.crow_indices()
     col_indices = tens.col_indices()
@@ -1934,7 +1918,7 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
                  num_source_factors: int = 1,
                  num_target_factors: int = 1,
                  dtype='int32',
-                 alignment_matrices: Optional[str] = None) -> None:
+                 alignment_matrix: Optional[str] = None) -> None:
         super().__init__(buckets=[bucket],
                          batch_size=batch_size,
                          bucket_batch_sizes=[BucketBatchSize(bucket, batch_size, None)],
@@ -1946,9 +1930,9 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
         self.sources_sentences, self.targets_sentences = create_sequence_readers(sources, targets,
                                                                                  source_vocabs, target_vocabs)
         #CTI: variable name uniformity.
-        self.alignment_matrix_iterator = None  # type: Optional[MetadataReader]
-        if alignment_matrices is not None:
-            self.alignment_matrix_iterator = AlignmentMatrixReader(alignment_matrices)
+        self.alignment_matrix_iterator = None  # type: Optional[AlignmentMatrixReader]
+        if alignment_matrix is not None:
+            self.alignment_matrix_iterator = AlignmentMatrixReader(alignment_matrix)
 
         self.sources_iters = [iter(s) for s in self.sources_sentences]
         self.targets_iters = [iter(s) for s in self.targets_sentences]
@@ -1971,9 +1955,9 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
         targets_sentences = [[] for _ in self.targets_sentences]  # type: List[List[str]]
         #CTI: on god gotta figure out a better name for this.
         #CTI: maybe I need to add a #type here?
-        alignment_matrix_things = [] if self.alignment_matrix_iterator is not None else None
+        alignment_matrices = [] if self.alignment_matrix_iterator is not None else None
         num_read = 0
-        for num_read, (sources, targets, alignment_matrices) in enumerate(
+        for num_read, (sources, targets, alignment_matrix) in enumerate(
                 parallel_iterate(self.sources_iters, self.targets_iters, self.alignment_matrix_iter, skip_blanks=False), 1):
             source_len = 0 if sources[0] is None else len(sources[0])
             target_len = 0 if targets[0] is None else len(targets[0])
@@ -1992,8 +1976,8 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
                 sources_sentences[i].append(source)
             for i, target in enumerate(targets):
                 targets_sentences[i].append(target)
-            if alignment_matrix_things is not None:
-                alignment_matrix_things.append(alignment_matrices)
+            if alignment_matrices is not None:
+                alignment_matrices.append(alignment_matrix)
             if num_read == self.batch_size:
                 break
 
@@ -2007,7 +1991,7 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
             return False
 
         dataset = self.data_loader.load(source_iterables=sources_sentences, target_iterables=targets_sentences,
-                                        alignment_matrix_iterable=alignment_matrix_things,
+                                        alignment_matrix_iterable=alignment_matrices,
                                         num_samples_per_bucket=[num_read])
 
         #DCTI: And again a this function has awareness of the dataset class's internals for no reason.
@@ -2125,31 +2109,6 @@ class ShardedParallelSampleIter(BaseParallelSampleIter):
             self.shard_index = pickle.load(fp)
         self._load_shard()
         self.shard_iter.load_state(fname + ".sharditer")
-
-def slice_csr_tensor(csr_tensor, f, t):
-    """
-    f - starting row index in slice.
-    t - ending (exclusive) row index in slice.
-    """
-    #CTI: This function is probably in the wrong place.
-    if not csr_tensor.is_sparse_csr:
-        raise ValueError("The tensor is not in CSR format. Please provide a CSR tensor.")
-
-    #CTI: maybe add more error checks and stuff for like being in range or smthn.
-
-    rows_indices = csr_tensor.crow_indices()[f:t + 1]
-    start_idx, end_idx = rows_indices[0], rows_indices[-1]
-    new_crow_indices = rows_indices - start_idx
-
-    new_col_indices = csr_tensor.col_indices()[start_idx:end_idx]
-    new_values = csr_tensor.values()[start_idx:end_idx]
-
-    new_csr_tensor = torch.sparse_csr_tensor(new_crow_indices, new_col_indices, new_values,
-                                             size=(t - f, csr_tensor.size(1)),
-                                             dtype=csr_tensor.dtype,
-                                             device=csr_tensor.device)
-
-    return new_csr_tensor
 
 class ParallelSampleIter(BaseParallelSampleIter):
     """

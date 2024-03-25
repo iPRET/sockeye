@@ -175,7 +175,7 @@ class TransformerDecoderBlock(pt.nn.Module):
         self.enc_attention = sockeye.layers.MultiHeadAttention(depth_att=config.model_size,
                                                                heads=config.attention_heads,
                                                                depth_out=config.model_size,
-                                                               dropout=config.dropout_attention if not return_attention else 0.0,
+                                                               dropout=config.dropout_attention,
                                                                depth_key_value=config.depth_key_value,
                                                                dtype=dtype,
                                                                clamp_to_dtype=clamp_to_dtype,
@@ -249,12 +249,10 @@ class TransformerDecoderBlock(pt.nn.Module):
         target = self.post_autoregr_layer(target_autoregr, target)
 
         # encoder attention
-        attention_output = self.enc_attention(queries=self.pre_enc_attention(target),
-                                              key_values=source,
-                                              mask=source_mask,
-                                              projected_memory_kv=enc_att_kv)
-
-        target_enc_att, attention = attention_output
+        target_enc_att, alignment_head_attention = self.enc_attention(queries=self.pre_enc_attention(target),
+                                                                      key_values=source,
+                                                                      mask=source_mask,
+                                                                      projected_memory_kv=enc_att_kv)
 
         target = self.post_enc_attention(target_enc_att, target)
 
@@ -265,7 +263,7 @@ class TransformerDecoderBlock(pt.nn.Module):
         if self.lhuc:
             target = self.lhuc(target)
 
-        return target, new_autoregr_states, attention
+        return target, new_autoregr_states, alignment_head_attention
 
 
 class TransformerProcessBlock(pt.nn.Module):

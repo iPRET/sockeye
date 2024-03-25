@@ -56,7 +56,7 @@ class Loss(pt.nn.Module):
         utils.check_condition(self.output_name in outputs,
                               "output '%s' not found. Loss requires this output key" % self.output_name)
         utils.check_condition(self.label_name in labels,
-                              "label '%s' not found. Loss requires this label key" % self.output_name)
+                              "label '%s' not found. Loss requires this label key" % self.label_name)
         output = outputs[self.output_name]
         label = labels[self.label_name]
 
@@ -405,18 +405,18 @@ class AlignmentMatrixKLDivergenceLoss(Loss):
                  label_name: str = "alignment_matrix_label") -> None:
         super().__init__(name=name, output_name=output_name, label_name=label_name, weight=weight)
         #CTI: Default-names for variables are probably garbo.
-    def forward(self, attention_probs: pt.Tensor, alignment_matrix: pt.Tensor) -> Tuple[pt.Tensor, pt.Tensor]:
+    def forward(self, alignment_head_attention: pt.Tensor, alignment_matrix: pt.Tensor) -> Tuple[pt.Tensor, pt.Tensor]:
         #CTI: Docs
         #CTI: Imma assume the attention matrix is of the shape [batch, target, source]
 
         #CTI: gotta probably pass the pre-softmax loss instead of post softmax.
         #CTI: rename attention to logits or whatver makes sense.
         #This is in case we have alignments during training but don't have them for testing.
-        res_device = attention_probs.device
+        res_device = alignment_head_attention.device
         if alignment_matrix.numel() == 0:
             return pt.zeros(1, device=res_device), pt.ones(1, device=res_device)
 
-        loss = -(alignment_matrix * pt.log(attention_probs + 1e-8)).sum(dim=2).sum(dim=1) / alignment_matrix.shape[1]
+        loss = -(alignment_matrix * pt.log(alignment_head_attention + 1e-8)).sum(dim=2).sum(dim=1) / alignment_matrix.shape[1]
         num_samples = pt.ones(1, device=res_device)
         loss = loss * self.weight
         loss = loss.mean()

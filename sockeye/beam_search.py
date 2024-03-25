@@ -85,7 +85,7 @@ class _SingleModelInference(_Inference):
                     vocab_slice_ids: Optional[pt.Tensor] = None,
                     target_prefix_factor_mask: Optional[pt.Tensor] = None,
                     factor_vocab_size: Optional[int] = None):
-        logits, knn_probs, states, target_factor_outputs, attention = self._model.decode_step(step_input, states, vocab_slice_ids)
+        logits, knn_probs, states, target_factor_outputs, alignment_head_attention = self._model.decode_step(step_input, states, vocab_slice_ids)
         if not self._skip_softmax:
             if knn_probs is None:  # no knn used
                 probs = pt.log_softmax(logits, dim=-1)
@@ -113,7 +113,7 @@ class _SingleModelInference(_Inference):
             # Shape: (batch*beam, num_secondary_factors, 2)
             target_factors = pt.cat(predictions, dim=1) if len(predictions) > 1 else predictions[0]
 
-        return scores, states, target_factors, attention
+        return scores, states, target_factors, alignment_head_attention
 
     @property
     def model_output_vocab_size(self):
@@ -174,7 +174,7 @@ class _EnsembleInference(_Inference):
         for model, model_state_structure in zip(self._models, self.state_structure()):
             model_states = states[state_index:state_index+len(model_state_structure)]
             state_index += len(model_state_structure)
-            logits, knn_probs, model_states, target_factor_outputs, attention = model.decode_step(step_input, model_states, vocab_slice_ids)
+            logits, knn_probs, model_states, target_factor_outputs, _ = model.decode_step(step_input, model_states, vocab_slice_ids)
             if knn_probs is None:
                 probs = logits.softmax(dim=-1)
             else:
@@ -226,7 +226,7 @@ class SearchResult:
     accumulated_scores: pt.Tensor
     lengths: pt.Tensor
     estimated_reference_lengths: pt.Tensor
-    hyp_attentions: Optional[pt.Tensor] = None
+    alignment_head_attentions: Optional[pt.Tensor] = None
 
 
 class UpdateScores(pt.nn.Module):
@@ -753,7 +753,7 @@ class GreedySearch(Search):
             target_prefix_factor_mask = target_prefix_factor_masks[:, t-1] \
                                         if target_prefix_factor_masks is not None and t <= target_prefix_factor_length \
                                         else None
-            scores, model_states, target_factors, attention = self._inference.decode_step(best_word_index,
+            scores, model_states, target_factors, _ = self._inference.decode_step(best_word_index,
                                                                                model_states,
                                                                                vocab_slice_ids,
                                                                                target_prefix_factor_mask,
@@ -984,7 +984,8 @@ class BeamSearch(Search):
                 target_prefix_factors, self.output_factor_vocab_size, self.dtype)
             target_prefix_factor_masks = target_prefix_factor_masks.unsqueeze(2).expand(-1, -1, self.beam_size, -1, -1)
 
-        hyp_attentions = pt.zeros([batch_size * self.beam_size, 0, source_length.max()], device=self.device)
+        #cat_attentions is supposed to track the alignment head attention matrices for the running best target hypotheses.
+        cat_attentions = pt.zeros([batch_size * self.beam_size, 0, source_length.max()], device=self.device)
 
         t = 1
         for t in range(1, max_iterations + 1):  # max_iterations + 1 required to get correct results
@@ -995,11 +996,11 @@ class BeamSearch(Search):
             target_prefix_factor_mask = target_prefix_factor_masks[:, t-1] \
                                         if target_prefix_factor_masks is not None and t <= target_prefix_factor_length \
                                         else None
-            target_dists, model_states, target_factors, attention = self._inference.decode_step(best_word_indices,
-                                                                                     model_states,
-                                                                                     vocab_slice_ids,
-                                                                                     target_prefix_factor_mask,
-                                                                                     self.output_factor_vocab_size)
+            target_dists, model_states, target_factors, alignment_head_attention = self._inference.decode_step(best_word_indices,
+                                                                                                               model_states,
+                                                                                                               vocab_slice_ids,
+                                                                                                               target_prefix_factor_mask,
+                                                                                                               self.output_factor_vocab_size)
             #Ok at this point target_dists and attention are parallel
             #attention - [80, 1, sourcelen]
             #target_dist - [80, 16]
@@ -1042,11 +1043,11 @@ class BeamSearch(Search):
                     best_hyp_indices = best_hyp_indices + offset
 
 
-            if attention.numel() != 0:
-                hyp_attentions = pt.cat([hyp_attentions, attention], dim = 1)
-                hyp_attentions = pt.index_select(hyp_attentions, index=best_hyp_indices, dim=0)
+            if alignment_head_attention.numel() != 0:
+                cat_attentions = pt.cat([cat_attentions, alignment_head_attention], dim=1)
+                cat_attentions = pt.index_select(cat_attentions, index=best_hyp_indices, dim=0)
             else:
-                hyp_attentions = None
+                cat_attentions = None
 
             # Map from restricted to full vocab ids if needed
             if vocab_slice_ids is not None:
@@ -1089,8 +1090,8 @@ class BeamSearch(Search):
         # 1 = scores_accumulated.size()[1]
         best_hyp_indices = indices.div(1, rounding_mode='floor').int() + offset
         scores_accumulated = scores_accumulated.index_select(0, best_hyp_indices)
-        if hyp_attentions is not None:
-            hyp_attentions = pt.index_select(hyp_attentions, 0, best_hyp_indices)
+        if cat_attentions is not None:
+            cat_attentions = pt.index_select(cat_attentions, 0, best_hyp_indices)
         if self.num_target_factors > 1:
             accumulated_factor_scores = factor_scores_accumulated[0].index_select(0, best_hyp_indices)
             # (batch*beam, num_target_factors)
@@ -1106,7 +1107,7 @@ class BeamSearch(Search):
                             accumulated_scores=scores_accumulated,
                             lengths=lengths,
                             estimated_reference_lengths=estimated_reference_lengths,
-                            hyp_attentions=hyp_attentions)
+                            alignment_head_attentions=cat_attentions)
 
     def _should_stop(self, finished: pt.Tensor, batch_size: int) -> bool:
         if self.beam_search_stop == C.BEAM_SEARCH_STOP_FIRST:

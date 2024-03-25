@@ -821,10 +821,12 @@ def add_model_parameters(params):
                               help='When enabled, gradients for NVS are blocked from propagating back to the encoder. '
                                     'This means that NVS learns to work with the main model\'s representations but '
                                     'does not influence its training.')
+
     model_params.add_argument('--return-attention',
                               type=bool,
                               default=False,
                               help='Kill me please')
+
     model_params.add_argument('--attention-alignment-layer',
                               type=int,
                               default=None,

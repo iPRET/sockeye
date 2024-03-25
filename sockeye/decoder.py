@@ -271,8 +271,8 @@ class TransformerDecoder(Decoder):
         :param states: List of initial states, as given by init_state_from_encoder().
         :return: Decoder output. Shape: (batch_size, target_embed_max_length, decoder_depth).
         """
-        outputs, _, attention = self.forward(inputs, states) #This should fully run the model on a batch.
-        return outputs, attention
+        outputs, _, alignment_head_attention = self.forward(inputs, states) #This should fully run the model on a batch.
+        return outputs, alignment_head_attention
 
     def forward(self, step_input: pt.Tensor, states: List[pt.Tensor]) -> Tuple[pt.Tensor, List[pt.Tensor], pt.Tensor]:
         target_mask = None
@@ -305,7 +305,7 @@ class TransformerDecoder(Decoder):
         target = self.dropout(target)
 
         new_autoregr_states = []  # type: List[pt.Tensor]
-        res_attention = pt.zeros(0)
+        alignment_head_attention = pt.zeros(0)
         for idx, (layer, layer_autoregr_state, layer_enc_att_kv) in enumerate(zip(self.layers, autoregr_states, enc_att_kv)):
             target, new_layer_autoregr_state, attention = layer(target=target,
                                                                 target_mask=target_mask,
@@ -314,9 +314,9 @@ class TransformerDecoder(Decoder):
                                                                 autoregr_states=layer_autoregr_state,
                                                                 enc_att_kv=layer_enc_att_kv)
             if idx == self.config.attention_alignment_layer:
-                res_attention = attention
-                res_attention = res_attention.reshape([batch, -1, target_max_len,
-                                                       source_max_len])[:, 0]
+                alignment_head_attention = attention
+                alignment_head_attention = alignment_head_attention.reshape([batch, -1, target_max_len,
+                                                                             source_max_len])[:, 0]
 
             new_autoregr_states += [*new_layer_autoregr_state]
 
@@ -333,11 +333,11 @@ class TransformerDecoder(Decoder):
         else:
             new_states = [steps, states[1], states[2]] + new_autoregr_states
 
-        if res_attention is None:
-            res_attention = pt.zeros(0)
+        if alignment_head_attention is None:
+            alignment_head_attention = pt.zeros(0)
         #CTI: Gotta remove the return_attention parameter.
 
-        return (target, new_states, res_attention)
+        return (target, new_states, alignment_head_attention)
 
     def get_num_hidden(self):
         return self.config.model_size

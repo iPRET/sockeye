@@ -31,7 +31,7 @@ from . import lexicon
 from . import utils
 from . import vocab
 from .beam_search import CandidateScorer, get_search_algorithm, GreedySearch, SearchResult
-from .data_io import tokens2ids, get_prepended_token_length
+from .data_io import tokens2ids, get_prepended_token_length, parse_alignment_matrix_indices
 from .model import SockeyeModel
 
 logger = logging.getLogger(__name__)
@@ -478,7 +478,8 @@ def make_input_from_multiple_strings(sentence_id: SentenceId,
 
     tokens = list(utils.get_tokens(strings[0]))
     factors = [list(utils.get_tokens(factor)) for factor in strings[1:]]
-    alignment_matrix = data_io.decode_alignment_matrix(alignment_matrix_string) if alignment_matrix_string is not None else None
+    alignment_matrix = parse_alignment_matrix_indices(
+        alignment_matrix_string) if alignment_matrix_string is not None else None
     if not all(len(factor) == len(tokens) for factor in factors):
         logger.error("Length of string sequences do not match: '%s'", strings)
         return _bad_input(sentence_id, reason=str(strings))
@@ -516,7 +517,7 @@ class TranslatorOutput:
     factor_scores: Optional[List[float]] = None
     nbest_factor_translations: Optional[List[List[str]]] = None
     nbest_factor_tokens: Optional[List[List[Tokens]]] = None
-    alignment_matrix: Optional[List[List[float]]] = None
+    alignment_head_attention: Optional[List[List[float]]] = None
 
     def json(self) -> Dict:
         """
@@ -551,8 +552,8 @@ class TranslatorOutput:
                 _d['translations_factors'].append(
                     {f'factor{i}': factor_translation for i, factor_translation in enumerate(factor_translations, 1)})
 
-        if self.alignment_matrix is not None:
-            _d['alignment_matrix'] = self.alignment_matrix
+        if self.alignment_head_attention is not None:
+            _d['alignment_head_attention'] = self.alignment_head_attention
 
         return _d
 
@@ -569,7 +570,7 @@ class Translation:
     scores: List[float]
     nbest_translations: Optional[NBestTranslations] = None
     estimated_reference_length: Optional[float] = None
-    alignment_matrix: Optional[List[List[float]]] = None
+    alignment_head_attention: Optional[List[List[float]]] = None
 
 
 def empty_translation(add_nbest: bool = False) -> Translation:
@@ -653,7 +654,7 @@ def _reduce_nbest_translations(nbest_translations_list: List[Translation]) -> Tr
                        best_translation.scores,
                        nbest_translations,
                        best_translation.estimated_reference_length,
-                       alignment_matrix=best_translation.alignment_matrix)
+                       alignment_head_attention=best_translation.alignment_head_attention)
 
 
 def _expand_nbest_translation(translation: Translation) -> List[Translation]:
@@ -1100,8 +1101,9 @@ class Translator:
                 else:
                     restrict_lexicon = self.restrict_lexicon
 
-            if trans_input.alignment_matrix is not None:
-                alignment_matrices.append(trans_input.alignment_matrix)
+            #if trans_input.alignment_matrix is not None:
+            #    alignment_matrices.append(trans_input.alignment_matrix)
+            #CTI: Smthn incredibly fucky going on here, and I'm not sure what.
 
         #if trans_input.alignment_matrix is not None:
         #    alignment_matrices = pt.cat(alignment_matrices, dim=0)
@@ -1202,14 +1204,13 @@ class Translator:
                                 factor_scores=translation.scores[1:],
                                 nbest_factor_translations=nbest_factor_translations,
                                 nbest_factor_tokens=nbest_factor_tokens,
-                                alignment_matrix=translation.alignment_matrix)
+                                alignment_head_attention=translation.alignment_head_attention)
 
     def _translate_np(self,
                       source: pt.Tensor,
                       source_length: pt.Tensor,
                       restrict_lexicon: Optional[lexicon.RestrictLexicon],
                       max_output_lengths: pt.Tensor,
-        #              alignment_matrix: Optional[pt.Tensor] = None,
                       target_prefix: Optional[pt.Tensor] = None,
                       target_prefix_factors: Optional[pt.Tensor] = None) -> List[Translation]:
         """
@@ -1225,8 +1226,6 @@ class Translator:
 
         :return: List of translations.
         """
-        #if target_prefix is not None or target_prefix_factors is not None:
-        #    print(2+2)
         return self._get_best_translations(self._search(source,
                                                         source_length,
                                                         restrict_lexicon,
@@ -1244,7 +1243,7 @@ class Translator:
         best_hyp_indices = result.best_hyp_indices.cpu().numpy()
         best_word_indices = result.best_word_indices.cpu().numpy()
         result_accumulated_scores_cpu = result.accumulated_scores.cpu()
-        attentions = result.hyp_attentions.cpu().numpy() if result.hyp_attentions is not None else None
+        alignment_head_attention = result.alignment_head_attentions.cpu().numpy() if result.alignment_head_attentions is not None else None
         if self.dtype == pt.bfloat16:
             # NumPy does not currently support bfloat16. Use float32 instead.
             result_accumulated_scores_cpu = result_accumulated_scores_cpu.to(dtype=pt.float32)
@@ -1266,14 +1265,14 @@ class Translator:
             indices_shape_1 = indices.shape[1]  # pylint: disable=unsubscriptable-object
             nbest_translations.append(
                     [self._assemble_translation(*x[:-1], unshift_target_factors=C.TARGET_FACTOR_SHIFT,
-                                                attention=x[-1]) for x in
+                                                alignment_head_attention=x[-1]) for x in
                      zip(best_word_indices[indices,
                                            :,  # get all factors
                                            np.arange(indices_shape_1)],
                          lengths[best_ids],
                          accumulated_scores[best_ids],
                          reference_lengths[best_ids],
-                         attentions[best_ids] if attentions is not None else [None for i in range(len(best_ids))])])  # type: ignore
+                         alignment_head_attention[best_ids] if alignment_head_attention is not None else [None for i in range(len(best_ids))])])  # type: ignore
 
         # reorder and regroup lists
         reduced_translations = [_reduce_nbest_translations(grouped_nbest) for grouped_nbest in zip(*nbest_translations)]  # type: ignore
@@ -1309,7 +1308,7 @@ class Translator:
                               seq_scores: np.ndarray,
                               estimated_reference_length: Optional[float],
                               unshift_target_factors: bool = False,
-                              attention: Optional[np.ndarray] = None) -> Translation:
+                              alignment_head_attention: Optional[np.ndarray] = None) -> Translation:
         """
         Takes a set of data pertaining to a single translated item, performs slightly different
         processing on each, and merges it into a Translation object.
@@ -1327,11 +1326,11 @@ class Translator:
         sequence = sequence[:length]  # type: ignore
         scores = seq_scores.tolist()
         estimated_reference_length = float(estimated_reference_length) if estimated_reference_length else None
-        attention = attention.tolist() if attention is not None else None
+        alignment_head_attention = alignment_head_attention.tolist() if alignment_head_attention is not None else None
         return Translation(sequence, scores,  # type: ignore
                            nbest_translations=None,
                            estimated_reference_length=estimated_reference_length,
-                           alignment_matrix=attention)
+                           alignment_head_attention=alignment_head_attention)
 
 
 def _unshift_target_factors(sequence: np.ndarray, fill_last_with: int = C.EOS_ID):

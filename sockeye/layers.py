@@ -528,7 +528,7 @@ class MultiHeadSelfAttention(MultiHeadAttentionBase, AutoregressiveLayer):
         # shape: (length, batch, key_depth + value_depth)
         return 0, batch_size, self.depth_out * 2
 
-    def forward(self, inputs: pt.Tensor, previous_states: Optional[pt.Tensor] = None, mask: Optional[pt.Tensor] = None, **args) -> Tuple[pt.Tensor, pt.Tensor, pt.Tensor]:  # type: ignore
+    def forward(self, inputs: pt.Tensor, previous_states: Optional[pt.Tensor] = None, mask: Optional[pt.Tensor] = None, **args) -> Tuple[pt.Tensor, pt.Tensor]:  # type: ignore
         """
         Computes multi-head attention on a set of inputs, serving as queries, keys, and values.
         If sequence lengths are provided, they will be used to mask the attention scores.
@@ -568,7 +568,7 @@ class MultiHeadSelfAttention(MultiHeadAttentionBase, AutoregressiveLayer):
             if previous_states is not None:
                 states = pt.cat((previous_states, states), dim=0)
 
-            c, v = self._attend(queries=queries, key_values=states, mask=mask)
+            c, _ = self._attend(queries=queries, key_values=states, mask=mask)
             return c, states
 
 import math
@@ -667,7 +667,7 @@ class MultiHeadAttention(MultiHeadAttentionBase):
                 queries: pt.Tensor,
                 key_values: pt.Tensor,
                 mask: Optional[pt.Tensor] = None,
-                projected_memory_kv: Optional[pt.Tensor] = None):  # mypy: ignore
+                projected_memory_kv: Optional[pt.Tensor] = None) -> Tuple[pt.Tensor, pt.Tensor]:  # mypy: ignore
         #CTI: Gotta update return type, gotta update doc.
         """
         Computes multi-head attention for queries given a memory tensor.
@@ -684,7 +684,7 @@ class MultiHeadAttention(MultiHeadAttentionBase):
         if self.training:  # use fused multi-head attention op during training
             assert not self.kv_interleaved
             assert projected_memory_kv is None, "caching not supported in training"
-            attention = None
+            alignment_head_attention = None
             contexts, _ = F.multi_head_attention_forward(query=queries, key=key_values, value=key_values,
                                                          embed_dim_to_check=self.depth, num_heads=self.heads,
                                                          in_proj_weight=None,
@@ -705,15 +705,15 @@ class MultiHeadAttention(MultiHeadAttentionBase):
 
             if self.return_attention:
                 roi = self.ff_kv.weight.shape[1] // self.heads
-                attention = single_head_attention(query=queries,
-                                                  key=key_values,
-                                                  attn_mask=mask[0] if mask is not None else None,
-                                                  q_proj_weight=self.ff_q.weight[:roi, :],
-                                                  k_proj_weight=self.ff_kv.weight[:self.depth, :][:roi])
+                alignment_head_attention = single_head_attention(query=queries,
+                                                                 key=key_values,
+                                                                 attn_mask=mask[0] if mask is not None else None,
+                                                                 q_proj_weight=self.ff_q.weight[:roi, :],
+                                                                 k_proj_weight=self.ff_kv.weight[:self.depth, :][:roi])
 
-            if attention is None:
-                attention = pt.zeros(0)
-            return contexts, attention
+            if alignment_head_attention is None:
+                alignment_head_attention = pt.zeros(0)
+            return contexts, alignment_head_attention
         else:  # during inference multi-head attention with interleaved key-value parameters is used
             queries = self.ff_q(queries)
             key_values = projected_memory_kv if projected_memory_kv is not None else self.ff_kv(key_values)

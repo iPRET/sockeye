@@ -521,23 +521,23 @@ def test_get_training_data_iters(end_of_prepending_tag):
         # tmp common vocab
         vcb = vocab.build_from_paths([data['train_source'], data['train_target']])
 
-        train_iter, val_iter, config_data, data_info = data_io.get_training_data_iters(
-            sources=[data['train_source']],
-            targets=[data['train_target']],
-            validation_sources=[data['dev_source']],
-            validation_targets=[data['dev_target']],
-            source_vocabs=[vcb],
-            target_vocabs=[vcb],
-            source_vocab_paths=[None],
-            target_vocab_paths=[None],
-            shared_vocab=True,
-            batch_size=batch_size,
-            batch_type=C.BATCH_TYPE_SENTENCE,
-            max_seq_len_source=train_max_length,
-            max_seq_len_target=train_max_length,
-            bucketing=True,
-            bucket_width=10,
-            end_of_prepending_tag=end_of_prepending_tag)
+        train_iter, val_iter, config_data, data_info = data_io.get_training_data_iters(sources=[data['train_source']],
+                                                                                       targets=[data['train_target']],
+                                                                                       validation_sources=[
+                                                                                           data['dev_source']],
+                                                                                       validation_targets=[
+                                                                                           data['dev_target']],
+                                                                                       source_vocabs=[vcb],
+                                                                                       target_vocabs=[vcb],
+                                                                                       source_vocab_paths=[None],
+                                                                                       target_vocab_paths=[None],
+                                                                                       shared_vocab=True,
+                                                                                       batch_size=batch_size,
+                                                                                       batch_type=C.BATCH_TYPE_SENTENCE,
+                                                                                       max_seq_len_source=train_max_length,
+                                                                                       max_seq_len_target=train_max_length,
+                                                                                       bucketing=True, bucket_width=10,
+                                                                                       end_of_prepending_tag=end_of_prepending_tag)
         assert isinstance(train_iter, data_io.ParallelSampleIter)
         assert isinstance(val_iter, data_io.ParallelSampleIter)
         assert isinstance(config_data, data_io.DataConfig)

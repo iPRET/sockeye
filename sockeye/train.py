@@ -238,7 +238,7 @@ def create_checkpoint_decoder(
         source_vocabs=source_vocabs,
         target_vocabs=target_vocabs,
         device=device)
-    #cpd.warmup()
+    cpd.warmup()
     return cpd
 
 
@@ -308,14 +308,10 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
                                   "You are using a prepared data folder, which is tied to a vocabulary. "
                                   "To change it you need to rerun data preparation with a different vocabulary.")
         train_iter, validation_iter, data_config, source_vocabs, target_vocabs = data_io.get_prepared_data_iters(
-            prepared_data_dir=args.prepared_data,
-            validation_sources=validation_sources,
-            validation_targets=validation_targets,
-            validation_alignment_matrices=validation_alignment_matrix,
-            shared_vocab=shared_vocab,
-            batch_size=args.batch_size,
-            batch_type=args.batch_type,
-            batch_sentences_multiple_of=args.batch_sentences_multiple_of)
+            prepared_data_dir=args.prepared_data, validation_sources=validation_sources,
+            validation_targets=validation_targets, shared_vocab=shared_vocab, batch_size=args.batch_size,
+            batch_type=args.batch_type, batch_sentences_multiple_of=args.batch_sentences_multiple_of,
+            validation_alignment_matrix=validation_alignment_matrix)
 
         # Check arguments used for blocking cross-attention between decoder and encoded prepended tokens
         if args.transformer_block_prepended_cross_attention:
@@ -415,7 +411,7 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
         sources = [str(os.path.abspath(s)) for s in sources]
         targets = [args.target] + args.target_factors
         targets = [str(os.path.abspath(t)) for t in targets]
-        alignment_matrices = os.path.abspath(args.alignment_matrix) if args.alignment_matrix is not None else None
+        alignment_matrix = os.path.abspath(args.alignment_matrix) if args.alignment_matrix is not None else None
 
         check_condition(len(sources) == len(validation_sources),
                         'Training and validation data must have the same number of source factors, '
@@ -427,27 +423,26 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
         #NOTE TO INGUS - Maybe I have to make a warning for when alignment matrices are given in training
         # but not validation.
 
-        train_iter, validation_iter, config_data, data_info = data_io.get_training_data_iters(
-            sources=sources,
-            targets=targets,
-            alignment_matrices=alignment_matrices,
-            validation_sources=validation_sources,
-            validation_targets=validation_targets,
-            validation_alignment_matrices=validation_alignment_matrix,
-            source_vocabs=source_vocabs,
-            target_vocabs=target_vocabs,
-            source_vocab_paths=source_vocab_paths,
-            target_vocab_paths=target_vocab_paths,
-            shared_vocab=shared_vocab,
-            batch_size=args.batch_size,
-            batch_type=args.batch_type,
-            max_seq_len_source=max_seq_len_source,
-            max_seq_len_target=max_seq_len_target,
-            bucketing=not args.no_bucketing,
-            bucket_width=args.bucket_width,
-            bucket_scaling=args.bucket_scaling,
-            end_of_prepending_tag=args.end_of_prepending_tag,
-            batch_sentences_multiple_of=args.batch_sentences_multiple_of)
+        train_iter, validation_iter, config_data, data_info = data_io.get_training_data_iters(sources=sources,
+                                                                                              targets=targets,
+                                                                                              validation_sources=validation_sources,
+                                                                                              validation_targets=validation_targets,
+                                                                                              source_vocabs=source_vocabs,
+                                                                                              target_vocabs=target_vocabs,
+                                                                                              source_vocab_paths=source_vocab_paths,
+                                                                                              target_vocab_paths=target_vocab_paths,
+                                                                                              shared_vocab=shared_vocab,
+                                                                                              batch_size=args.batch_size,
+                                                                                              batch_type=args.batch_type,
+                                                                                              max_seq_len_source=max_seq_len_source,
+                                                                                              max_seq_len_target=max_seq_len_target,
+                                                                                              bucketing=not args.no_bucketing,
+                                                                                              bucket_width=args.bucket_width,
+                                                                                              bucket_scaling=args.bucket_scaling,
+                                                                                              end_of_prepending_tag=args.end_of_prepending_tag,
+                                                                                              batch_sentences_multiple_of=args.batch_sentences_multiple_of,
+                                                                                              alignment_matrix=alignment_matrix,
+                                                                                              validation_alignment_matrix=validation_alignment_matrix)
 
         data_info_fname = os.path.join(output_folder, C.DATA_INFO)
         logger.info("Writing data config to '%s'", data_info_fname)
@@ -791,7 +786,6 @@ def create_losses(args: argparse.Namespace, all_num_classes: List[int]) -> List[
 
     if args.return_attention:
         kldiv = loss.AlignmentMatrixKLDivergenceLoss()
-
         losses.append(kldiv)
 
     return losses
@@ -1171,7 +1165,6 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
             training_model = torch.jit.trace(training_model, (batch.source, batch.source_length,
                                                              batch.target, batch.target_length,
                                                              batch.alignment_matrix), strict=False)
-            #pass
         eval_iter.reset()
 
     if utils.is_distributed() and not utils.using_deepspeed():

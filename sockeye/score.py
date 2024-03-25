@@ -71,15 +71,10 @@ def score(args: argparse.Namespace):
                     "Number of target inputs/factors provided (%d) does not match number of target factors "
                     "required by the model (%d)" % (len(targets), model.num_target_factors))
 
-    score_iter = data_io.get_scoring_data_iters(
-        sources=sources,
-        targets=targets,
-        source_vocabs=source_vocabs,
-        target_vocabs=target_vocabs,
-        batch_size=args.batch_size,
-        max_seq_len_source=max_seq_len_source,
-        max_seq_len_target=max_seq_len_target,
-        eop_id=model.eop_id)
+    score_iter = data_io.get_scoring_data_iters(sources=sources, targets=targets, source_vocabs=source_vocabs,
+                                                target_vocabs=target_vocabs, batch_size=args.batch_size,
+                                                max_seq_len_source=max_seq_len_source,
+                                                max_seq_len_target=max_seq_len_target, eop_id=model.eop_id)
 
     constant_length_ratio = args.brevity_penalty_constant_length_ratio
     if args.brevity_penalty_type == C.BREVITY_PENALTY_CONSTANT:

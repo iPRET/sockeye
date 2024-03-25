@@ -95,7 +95,7 @@ class CheckpointDecoder:
 
             inputs_sentences = [f.readlines() for f in inputs_fins]
             targets_sentences = [f.readlines() for f in references_fins]
-            alignment_matrices = exit_stack.enter_context(utils.smart_open(alignment_matrix)).readlines() \
+            alignment_matrix_strings = exit_stack.enter_context(utils.smart_open(alignment_matrix)).readlines() \
                 if alignment_matrix is not None else None
 
             utils.check_condition(all(len(l) == len(targets_sentences[0])
@@ -104,22 +104,22 @@ class CheckpointDecoder:
             utils.check_condition(all(len(sentence.strip()) > 0 for sentence in targets_sentences[0]),
                                   "Empty target validation sentence.")
             if alignment_matrix is not None:
-                utils.check_condition(len(alignment_matrices) == len(inputs_sentences[0]),
+                utils.check_condition(len(alignment_matrix_strings) == len(inputs_sentences[0]),
                                       "Number of validation metadata lines differs from number of input lines.")
 
             if sample_size <= 0:
                 sample_size = len(inputs_sentences[0])
             if sample_size < len(inputs_sentences[0]):
                 sentences = parallel_subsample(
-                    inputs_sentences + targets_sentences + ([alignment_matrices]
+                    inputs_sentences + targets_sentences + ([alignment_matrix_strings]
                                                             if alignment_matrix is not None else []),
                     sample_size, random_seed)
                 self.inputs_sentences = sentences[0:len(inputs_sentences)]
-                self.targets_sentences = sentences[len(inputs_sentences):]
-                self.alignment_matrices = sentences[-1] if alignment_matrix is not None else None
+                self.targets_sentences = sentences[len(inputs_sentences):len(inputs_sentences) + len(targets_sentences)]
+                self.alignment_matrix_strings = sentences[-1] if alignment_matrix is not None else None
             else:
                 self.inputs_sentences, self.targets_sentences = inputs_sentences, targets_sentences
-                self.alignment_matrices = alignment_matrices
+                self.alignment_matrix_strings = alignment_matrix_strings
 
             if sample_size < self.batch_size:
                 self.batch_size = sample_size
@@ -128,8 +128,8 @@ class CheckpointDecoder:
             write_to_file(factor, os.path.join(model_folder, C.DECODE_IN_NAME.format(factor=factor_idx)))
         for factor_idx, factor in enumerate(self.targets_sentences):
             write_to_file(factor, os.path.join(model_folder, C.DECODE_REF_NAME.format(factor=factor_idx)))
-        if self.alignment_matrices is not None:
-            write_to_file(self.alignment_matrices, os.path.join(model_folder, C.DECODE_ALIGNMENT_MATRIX_NAME))
+        if self.alignment_matrix_strings is not None:
+            write_to_file(self.alignment_matrix_strings, os.path.join(model_folder, C.DECODE_ALIGNMENT_MATRIX_NAME))
 
         self.inputs_sentences = list(zip(*self.inputs_sentences))  # type: ignore
 
@@ -178,7 +178,7 @@ class CheckpointDecoder:
             trans_inputs = []  # type: List[inference.TranslatorInput]
             for i, (inputs, alignment_matrix) in enumerate(
                 itertools.zip_longest(self.inputs_sentences,
-                                      (self.alignment_matrices if self.alignment_matrices is not None else []))):
+                                      (self.alignment_matrix_strings if self.alignment_matrix_strings is not None else []))):
                 trans_inputs.append(inference.make_input_from_multiple_strings(i, inputs,
                                                                                alignment_matrix_string=alignment_matrix))
             trans_outputs = self.translator.translate(trans_inputs)
@@ -236,8 +236,8 @@ class CheckpointDecoder:
         original_mode = self.model.training
         self.model.eval()
         one_sentence = [inference.make_input_from_multiple_strings(0, self.inputs_sentences[0],
-                                                                   alignment_matrix_string=self.alignment_matrices[0]
-                                                                   if self.alignment_matrices is not None else None)]
+                                                                   alignment_matrix_string=self.alignment_matrix_strings[0]
+                                                                   if self.alignment_matrix_strings is not None else None)]
         _ = self.translator.translate(one_sentence)
         self.model.train(original_mode)
 

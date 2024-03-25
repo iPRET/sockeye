@@ -844,7 +844,3 @@ def fault_tolerant_symlink(src: str, dst: str, max_retries: int = 6):
             time.sleep(wait_time)
             retries += 1
     raise OSError(f'Max retries exceeded when attempting to create symlink: \'{src}\' -> \'{dst}\'')
-
-
-def json_loads_dict(line):
-    return None

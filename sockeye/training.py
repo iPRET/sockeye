@@ -85,7 +85,6 @@ class ModelWithLoss(torch.nn.Module):
         loss_outputs = [loss_function(model_outputs, labels) for loss_function in self.losses]
         loss_values, num_samples = zip(*loss_outputs)
         sum_losses = sum(loss_values) if len(loss_values) > 1 else loss_values[0]
-        #print(loss_values)
         return sum_losses, loss_values, num_samples  # type: ignore
 
 
