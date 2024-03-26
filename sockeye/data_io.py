@@ -450,7 +450,7 @@ def create_alignment_matrix(indexes, size):
 
     normalized_values = [0] * size[1]
     for target_idx, amount in enumerate(amounts):
-        if value != 0:
+        if amount != 0:
             normalized_values[target_idx] = 1 / amount
 
     values = []
