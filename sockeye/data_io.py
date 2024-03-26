@@ -2254,16 +2254,13 @@ class Batch:
     labels: Dict[str, torch.Tensor]
     samples: int
     tokens: int
-    alignment_matrix: torch.Tensor = torch.zeros(0)
     def load(self, device: torch.device) -> 'Batch':
         source = self.source.to(device)
         source_length = self.source_length.to(device)
         target = self.target.to(device)
         target_length = self.target_length.to(device)
         labels = {name: label.to(device) for name, label in self.labels.items()}
-        alignment_matrix = self.alignment_matrix.to(device) if self.alignment_matrix.numel() != 0 else C.NONE_TENSOR
-        return Batch(source, source_length, target, target_length, labels, self.samples, self.tokens,
-                     alignment_matrix=alignment_matrix)
+        return Batch(source, source_length, target, target_length, labels, self.samples, self.tokens)
 
 
 def create_target_and_shifted_label_sequences(target_and_label: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -2318,5 +2315,4 @@ def create_batch_from_parallel_sample(source: torch.Tensor,
 
     labels['alignment_matrix_label'] = alignment_matrix
 
-    return Batch(source, source_length, target, target_length, labels, samples, tokens,
-                 alignment_matrix=alignment_matrix)
+    return Batch(source, source_length, target, target_length, labels, samples, tokens)

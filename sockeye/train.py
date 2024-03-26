@@ -1188,8 +1188,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
         # https://github.com/pytorch/pytorch/pull/63552
         with torch.cuda.amp.autocast(cache_enabled=False) if args.amp else utils.no_context():  # type: ignore
             training_model = torch.jit.trace(training_model, (batch.source, batch.source_length,
-                                                             batch.target, batch.target_length,
-                                                             batch.alignment_matrix), strict=False)
+                                                             batch.target, batch.target_length), strict=False)
         eval_iter.reset()
 
     if utils.is_distributed() and not utils.using_deepspeed():

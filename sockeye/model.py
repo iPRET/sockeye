@@ -334,7 +334,7 @@ class SockeyeModel(pt.nn.Module):
         new_states = decode_step_outputs[self.num_target_factors + 1:]
         return step_output, knn_output, new_states, target_factor_outputs, alignment_head_attention
 
-    def forward(self, source, source_length, target, target_length, alignment_matrix):  # pylint: disable=arguments-differ
+    def forward(self, source, source_length, target, target_length):  # pylint: disable=arguments-differ
         # When updating only the decoder (specified directly or implied by
         # caching the encoder and embedding forward passes), turn off autograd
         # for the encoder and embeddings to save memory.

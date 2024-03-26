@@ -541,7 +541,6 @@ class SortStates(pt.nn.Module):
             else:
                 raise ValueError("Provided state format %s not recognized." % state_format)
             sorted_states.append(sorted_state)
-            #DCTI: What the fuck is wrong with the sockeye devs?
         return sorted_states
 
 

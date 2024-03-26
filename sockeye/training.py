@@ -72,11 +72,10 @@ class ModelWithLoss(torch.nn.Module):
                 source_length: torch.Tensor,
                 target: torch.Tensor,
                 target_length: torch.Tensor,
-                labels: Dict[str, torch.Tensor],
-                alignment_matrix: Optional[torch.Tensor]) -> Tuple[torch.Tensor,
-                                                             List[torch.Tensor],
-                                                             List[torch.Tensor]]:
-        model_outputs = self.model(source, source_length, target, target_length, alignment_matrix)
+                labels: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor,
+                                                          List[torch.Tensor],
+                                                          List[torch.Tensor]]:
+        model_outputs = self.model(source, source_length, target, target_length)
         #DCTI: This line here calculates model outputs for batch later used for calculating losses.
         if utils.using_deepspeed():
             # Guarantee model outputs are float32 before computing losses.
@@ -364,8 +363,7 @@ class EarlyStoppingTrainer:
             # Forward + loss
             #DCTI: This here line calculates the losses.
             sum_losses, loss_values, num_samples = self.model_object(batch.source, batch.source_length,
-                                                                     batch.target, batch.target_length, batch.labels,
-                                                                     batch.alignment_matrix)
+                                                                     batch.target, batch.target_length, batch.labels)
         # Backward
         if utils.using_deepspeed():
             # DeepSpeed backward. DeepSpeed handles all loss scaling.
@@ -459,8 +457,7 @@ class EarlyStoppingTrainer:
                 # Forward: run SockeyeModel directly. The traced model may not
                 # fully support switching between train and eval modes depending
                 # how much Python logic is used in the various submodules.
-                outputs = self.sockeye_model(batch.source, batch.source_length, batch.target, batch.target_length,
-                                             batch.alignment_matrix)
+                outputs = self.sockeye_model(batch.source, batch.source_length, batch.target, batch.target_length)
                 # Guarantee model outputs are float32 before computing losses
                 outputs = {name: output.to(torch.float32) for (name, output) in outputs.items()}
                 # Loss

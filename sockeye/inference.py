@@ -31,7 +31,7 @@ from . import lexicon
 from . import utils
 from . import vocab
 from .beam_search import CandidateScorer, get_search_algorithm, GreedySearch, SearchResult
-from .data_io import tokens2ids, get_prepended_token_length, parse_alignment_matrix_indices
+from .data_io import tokens2ids, get_prepended_token_length
 from .model import SockeyeModel
 
 logger = logging.getLogger(__name__)
@@ -133,7 +133,6 @@ class TranslatorInput:
     sentence_id: SentenceId
     tokens: Tokens
     factors: Optional[List[Tokens]] = None
-    alignment_matrix: Optional[pt.Tensor] = None
     source_prefix_tokens: Optional[Tokens] = None
     source_prefix_factors: Optional[List[Tokens]] = None
     target_prefix_tokens: Optional[Tokens] = None
@@ -146,7 +145,7 @@ class TranslatorInput:
     pass_through_dict: Optional[Dict] = None
 
     def __str__(self):
-        return f'TranslatorInput({self.sentence_id}, {self.tokens}, factors={self.factors}, alignment_matrix={self.alignment_matrix}, source_prefix_tokens={self.source_prefix_tokens}, source_prefix_factors={self.source_prefix_factors}, target_prefix_tokens={self.target_prefix_tokens}, target_prefix_factors={self.target_prefix_factors}, use_target_prefix_all_chunks={self.use_target_prefix_all_chunks}, keep_target_prefix_key={self.keep_target_prefix_key}, constraints={self.constraints}, avoid={self.avoid_list})'
+        return f'TranslatorInput({self.sentence_id}, {self.tokens}, factors={self.factors}, source_prefix_tokens={self.source_prefix_tokens}, source_prefix_factors={self.source_prefix_factors}, target_prefix_tokens={self.target_prefix_tokens}, target_prefix_factors={self.target_prefix_factors}, use_target_prefix_all_chunks={self.use_target_prefix_all_chunks}, keep_target_prefix_key={self.keep_target_prefix_key}, constraints={self.constraints}, avoid={self.avoid_list})'
 
     def __len__(self):
         return len(self.tokens) + self.num_source_prefix_tokens
@@ -226,7 +225,6 @@ class TranslatorInput:
             yield TranslatorInput(sentence_id=self.sentence_id,
                                   tokens=self.tokens[i:i + chunk_size],
                                   factors=factors,
-                                  alignment_matrix=self.alignment_matrix,
                                   source_prefix_tokens=self.source_prefix_tokens,
                                   source_prefix_factors=self.source_prefix_factors,
                                   target_prefix_tokens=target_prefix_tokens,
@@ -246,7 +244,6 @@ class TranslatorInput:
                                tokens=self.tokens + [C.EOS_SYMBOL],
                                factors=[factor + [C.EOS_SYMBOL] for factor in
                                         self.factors] if self.factors is not None else None,
-                               alignment_matrix=self.alignment_matrix,
                                source_prefix_tokens=self.source_prefix_tokens,
                                source_prefix_factors=self.source_prefix_factors,
                                target_prefix_tokens=self.target_prefix_tokens,
@@ -461,10 +458,8 @@ def make_input_from_factored_string(sentence_id: SentenceId,
 
     return TranslatorInput(sentence_id=sentence_id, tokens=tokens, factors=factors)
 
-import sockeye.data_io
 def make_input_from_multiple_strings(sentence_id: SentenceId,
-                                     strings: List[str],
-                                     alignment_matrix_string: Optional[str] = None) -> TranslatorInput:
+                                     strings: List[str]) -> TranslatorInput:
     """
     Returns a TranslatorInput object from multiple strings, where the first element corresponds to the surface tokens
     and the remaining elements to additional factors. All strings must parse into token sequences of the same length.
@@ -478,13 +473,10 @@ def make_input_from_multiple_strings(sentence_id: SentenceId,
 
     tokens = list(utils.get_tokens(strings[0]))
     factors = [list(utils.get_tokens(factor)) for factor in strings[1:]]
-    alignment_matrix = parse_alignment_matrix_indices(
-        alignment_matrix_string) if alignment_matrix_string is not None else None
     if not all(len(factor) == len(tokens) for factor in factors):
         logger.error("Length of string sequences do not match: '%s'", strings)
         return _bad_input(sentence_id, reason=str(strings))
-    return TranslatorInput(sentence_id=sentence_id, tokens=tokens, factors=factors,
-                           alignment_matrix=alignment_matrix)
+    return TranslatorInput(sentence_id=sentence_id, tokens=tokens, factors=factors)
 
 
 @dataclass
@@ -1100,13 +1092,6 @@ class Translator:
                     restrict_lexicon = None
                 else:
                     restrict_lexicon = self.restrict_lexicon
-
-            #if trans_input.alignment_matrix is not None:
-            #    alignment_matrices.append(trans_input.alignment_matrix)
-            #CTI: Smthn incredibly fucky going on here, and I'm not sure what.
-
-        #if trans_input.alignment_matrix is not None:
-        #    alignment_matrices = pt.cat(alignment_matrices, dim=0)
 
         if restrict_lexicon is None and isinstance(self.restrict_lexicon, dict):
             logger.info("No restrict_lexicon specified for input when using multiple lexicons, "
