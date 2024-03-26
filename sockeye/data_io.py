@@ -440,33 +440,31 @@ def create_alignment_matrix(indexes, size):
     """
     Creates a sparse alignment matrix from a list of indexes,
     e.g. indexes = [(1, 2), (1, 3), (2, 5), ...]
+    size is assumed to be (source len, target len)
     I'll assume the tuples are (source idx, target idx).
-    Returns sparse_coo_tensor of shape size.
+    Returns sparse_coo_tensor of shape [1, target len * source len] reshaped from [target len, source len].
     """
-    #CTI: Fix the comments.
-    #CTI: Make this code cleaner.
-    #CTI: Dimension of normalization depends on how the transformer side works.
-    #  This will definitely require testing.
-    #Generate values.
-    #I'll normalize by row, i.e.
-    amounts = [0 for i in range(size[0])]
-    for idx1, idx2 in indexes:
-        amounts[idx2] += 1
-    for idx, val in enumerate(amounts):
-        if val != 0:
-            amounts[idx] = 1 / val
+    amounts = [0] * size[1]
+    for _, target_idx in indexes:
+        amounts[target_idx] += 1
+
+    normalized_values = [0] * size[1]
+    for target_idx, amount in enumerate(amounts):
+        if value != 0:
+            normalized_values[target_idx] = 1 / amount
+
     values = []
-    for idx1, idx2 in indexes:
-        values.append(amounts[idx2])
+    for _, target_idx in indexes:
+        values.append(normalized_values[target_idx])
 
     #Format indexes.
-    indexes = [(pair[1], pair[0]) for pair in indexes]
+    indexes = [(target_idx, source_idx) for source_idx, target_idx in indexes]
     indexes = torch.tensor(indexes).t().long()
     if indexes.numel() == 0:
+        #This is necessary beacuse torch fails to handle the empty case.
         indexes = torch.zeros([2, 0]).long()
 
-    #CTI: Ok this is definitely some kind of abuse, and I need to make this cleaner.
-    coo_tensor = torch.sparse_coo_tensor(indexes, values, size)
+    coo_tensor = torch.sparse_coo_tensor(indexes, values, (size[1], size[0]))
     tensor = coo_tensor.to_dense()
     tensor = tensor.reshape([1, -1])
     coo_tensor = tensor.to_sparse_coo()
@@ -1746,6 +1744,8 @@ class ParallelDataSet:
                                                                                         0, desired_indices)), dim=0)
                 if alignment_matrix is not None:
                     assert bucket_alignment_matrix is not None
+                    #Conversion CSR -> COO -> CSR is done, because in this version of torch sparse CSR tensors don't
+                    #support torch.index_select.
                     bucket_alignment_matrix = bucket_alignment_matrix.to_sparse_coo()
                     bucket_alignment_matrix = torch.cat((bucket_alignment_matrix,
                                                                      torch.index_select(bucket_alignment_matrix,
@@ -1780,6 +1780,8 @@ class ParallelDataSet:
                                                                       0, permutation))
                 if self.alignment_matrix is not None:
                     assert alignment_matrix is not None
+                    #Conversion CSR -> COO -> CSR is done, because in this version of torch CSR tensors don't support
+                    #torch.index_select.
                     tmp = self.alignment_matrix[buck_idx].to_sparse_coo()
                     alignment_matrix.append(torch.index_select(tmp, 0, permutation).to_sparse_csr())
             else:

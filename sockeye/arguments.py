@@ -822,11 +822,6 @@ def add_model_parameters(params):
                                     'This means that NVS learns to work with the main model\'s representations but '
                                     'does not influence its training.')
 
-    model_params.add_argument('--return-attention',
-                              type=bool,
-                              default=False,
-                              help='Kill me please')
-
     model_params.add_argument('--attention-alignment-layer',
                               type=int,
                               default=None,

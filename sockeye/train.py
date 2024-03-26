@@ -506,7 +506,8 @@ def create_decoder_config(args: argparse.Namespace,
                           encoder_num_hidden: int,
                           max_seq_len_source: int,
                           max_seq_len_target: int,
-                          num_embed_target: int) -> transformer.TransformerConfig:
+                          num_embed_target: int,
+                          return_attention: bool) -> transformer.TransformerConfig:
     """
     Create the config for the decoder.
 
@@ -532,6 +533,25 @@ def create_decoder_config(args: argparse.Namespace,
             decoder_transformer_model_size, num_embed_target + total_target_factor_size))
         decoder_transformer_model_size = num_embed_target + total_target_factor_size
 
+    if args.alignment_matrix:
+        #training alignment matrixes provided, so model has to return alignment matrices.
+        if args.attention_alignment_layer is None:
+            #Required setting a reasonable default value.
+            if decoder_num_layers > 1:
+                attention_alignment_layer = decoder_num_layers - 2
+            else:
+                attention_alignment_layer = 0
+            logger.info("attention-alignment-layer not provided, choosing layer %d" % (attention_alignment_layer))
+        else:
+            check_condition(args.attention_alignment_layer >= 0 and args.attention_alignment_layer < decoder_num_layers,
+                            'attention-alignment-layer must be between 0 and %d (decoder layer count - 1) inclusive'
+                            ' but got %d' % (decoder_num_layers - 1, args.attention_alignment_layer))
+            attention_alignment_layer = args.attention_alignment_layer
+    else:
+        attention_alignment_layer = None
+
+
+
     config_decoder = transformer.TransformerConfig(
         model_size=decoder_transformer_model_size,
         attention_heads=args.transformer_attention_heads[1],
@@ -551,7 +571,8 @@ def create_decoder_config(args: argparse.Namespace,
         depth_key_value=encoder_num_hidden,
         decoder_type=args.decoder,
         use_glu=args.transformer_feed_forward_use_glu,
-        attention_alignment_layer=args.attention_alignment_layer)
+        attention_alignment_layer=attention_alignment_layer,
+        return_attention=return_attention)
 
     return config_decoder
 
@@ -647,8 +668,13 @@ def create_model_config(args: argparse.Namespace,
 
     config_encoder, encoder_num_hidden = create_encoder_config(args, max_seq_len_source, max_seq_len_target,
                                                                num_embed_source)
+    if args.alignment_matrix is not None:
+        return_attention = True
+    else:
+        return_attention = False
+
     config_decoder = create_decoder_config(args, encoder_num_hidden, max_seq_len_source, max_seq_len_target,
-                                           num_embed_target)
+                                           num_embed_target, return_attention=return_attention)
 
     source_factor_configs = None
     if len(source_vocab_sizes) > 1:
@@ -728,7 +754,7 @@ def create_model_config(args: argparse.Namespace,
                                      neural_vocab_selection_block_loss=args.neural_vocab_selection_block_loss,
                                      lhuc=args.lhuc is not None,
                                      dtype=C.DTYPE_FP32,
-                                     return_attention=args.return_attention)
+                                     return_attention=return_attention)
     return model_config
 
 
@@ -784,7 +810,7 @@ def create_losses(args: argparse.Namespace, all_num_classes: List[int]) -> List[
                                                   metric_prefix="bow")
         losses.append(bow_loss)
 
-    if args.return_attention:
+    if args.alignment_matrix:
         kldiv = loss.AlignmentMatrixKLDivergenceLoss()
         losses.append(kldiv)
 
@@ -1094,8 +1120,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
     sockeye_model = model.SockeyeModel(
         model_config,
         clamp_to_dtype=args.clamp_to_dtype,
-        train_decoder_only=args.fixed_param_strategy == C.FIXED_PARAM_STRATEGY_ALL_EXCEPT_DECODER,
-        return_attention=args.return_attention)
+        train_decoder_only=args.fixed_param_strategy == C.FIXED_PARAM_STRATEGY_ALL_EXCEPT_DECODER)
 
     # Move the model to the training device unless using DeepSpeed, which moves
     # the model automatically.
