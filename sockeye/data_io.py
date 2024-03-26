@@ -874,8 +874,7 @@ def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
                              max_seq_len_source: int,
                              max_seq_len_target: int,
                              batch_size: int,
-                             permute: bool = False,
-                             validation_alignment_matrix: Optional[str] = None) -> 'ParallelSampleIter':
+                             permute: bool = False) -> 'ParallelSampleIter':
     """
     Returns a ParallelSampleIter for the validation data.
     """
@@ -893,10 +892,6 @@ def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
     validation_sources_sentences, validation_targets_sentences = create_sequence_readers(validation_sources,
                                                                                          validation_targets,
                                                                                          source_vocabs, target_vocabs)
-    #CTI: I gotta rename this more uniformly.
-    validation_alignment_matrix_iterable = None
-    if validation_alignment_matrix is not None:
-        validation_alignment_matrix_iterable = AlignmentMatrixReader(validation_alignment_matrix)
 
     validation_data_statistics = get_data_statistics(validation_sources_sentences,
                                                      validation_targets_sentences,
@@ -907,10 +902,8 @@ def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
 
     validation_data_statistics.log(bucket_batch_sizes)
 
-    validation_data = (data_loader.load(validation_sources_sentences, validation_targets_sentences,
-                                        validation_data_statistics.num_sents_per_bucket,
-                                        alignment_matrix_iterable=validation_alignment_matrix_iterable)
-                       .fill_up(bucket_batch_sizes))
+    validation_data = data_loader.load(validation_sources_sentences, validation_targets_sentences,
+                                       validation_data_statistics.num_sents_per_bucket).fill_up(bucket_batch_sizes)
 
     return ParallelSampleIter(data=validation_data,
                               buckets=buckets,
@@ -928,12 +921,11 @@ def get_prepared_data_iters(prepared_data_dir: str,
                             batch_size: int,
                             batch_type: str,
                             batch_sentences_multiple_of: int = 1,
-                            permute: bool = True,
-                            validation_alignment_matrix: Optional[str] = None) -> Tuple['BaseParallelSampleIter',
-                                                                                          'BaseParallelSampleIter',
-                                                                                          'DataConfig',
-                                                                                          List[vocab.Vocab],
-                                                                                          List[vocab.Vocab]]:
+                            permute: bool = True) -> Tuple['BaseParallelSampleIter',
+                                                           'BaseParallelSampleIter',
+                                                           'DataConfig',
+                                                           List[vocab.Vocab],
+                                                           List[vocab.Vocab]]:
     logger.info("===============================")
     logger.info("Creating training data iterator")
     logger.info("===============================")
@@ -1007,7 +999,7 @@ def get_prepared_data_iters(prepared_data_dir: str,
                                                bucket_batch_sizes=bucket_batch_sizes, source_vocabs=source_vocabs,
                                                target_vocabs=target_vocabs, max_seq_len_source=max_seq_len_source,
                                                max_seq_len_target=max_seq_len_target, batch_size=batch_size,
-                                               permute=False, validation_alignment_matrix=validation_alignment_matrix)
+                                               permute=False)
 
     return train_iter, validation_iter, config_data, source_vocabs, target_vocabs
 
@@ -1031,7 +1023,6 @@ def get_training_data_iters(sources: List[str],
                             allow_empty: bool = False,
                             batch_sentences_multiple_of: int = 1,
                             alignment_matrix: Optional[str] = None,
-                            validation_alignment_matrix: Optional[str] = None,
                             permute: bool = True) -> Tuple['BaseParallelSampleIter', Optional['BaseParallelSampleIter'],
                                                            'DataConfig', 'DataInfo']:
     #CTI: Update docs.
@@ -1082,7 +1073,7 @@ def get_training_data_iters(sources: List[str],
     sources_sentences, targets_sentences = create_sequence_readers(sources, targets, source_vocabs, target_vocabs)
 
     alignment_matrix_iterable = None  # type: Optional[AlignmentMatrixReader]
-    if (alignment_matrix is not None) or (validation_alignment_matrix is not None):
+    if alignment_matrix is not None:
         alignment_matrix_iterable = AlignmentMatrixReader(alignment_matrix)
 
     # Pass 2: Get data statistics and determine the number of data points for each bucket.
@@ -1138,7 +1129,7 @@ def get_training_data_iters(sources: List[str],
                                                bucket_batch_sizes=bucket_batch_sizes, source_vocabs=source_vocabs,
                                                target_vocabs=target_vocabs, max_seq_len_source=max_seq_len_source,
                                                max_seq_len_target=max_seq_len_target, batch_size=batch_size,
-                                               permute=False, validation_alignment_matrix=validation_alignment_matrix)
+                                               permute=False)
 
     return train_iter, validation_iter, config_data, data_info
 
@@ -1150,8 +1141,7 @@ def get_scoring_data_iters(sources: List[str],
                            batch_size: int,
                            max_seq_len_source: int,
                            max_seq_len_target: int,
-                           eop_id: int = C.INVALID_ID,
-                           alignment_matrix: Optional[str] = None) -> 'BaseParallelSampleIter':
+                           eop_id: int = C.INVALID_ID) -> 'BaseParallelSampleIter':
     #CTI: Update doc.
     """
     Returns a data iterator for scoring. The iterator loads data on demand,
@@ -1187,8 +1177,7 @@ def get_scoring_data_iters(sources: List[str],
                                                 source_vocabs=source_vocabs, target_vocabs=target_vocabs, bucket=bucket,
                                                 batch_size=batch_size,
                                                 max_lens=(max_seq_len_source, max_seq_len_target),
-                                                num_source_factors=len(sources), num_target_factors=len(targets),
-                                                alignment_matrix=alignment_matrix)
+                                                num_source_factors=len(sources), num_target_factors=len(targets))
 
     # and with the model appraise them.
     return scoring_iter

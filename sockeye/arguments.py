@@ -478,10 +478,6 @@ def add_validation_data_params(params):
                         default=[],
                         help='File(s) containing additional token-parallel validation target side factors. '
                              'Default: %(default)s.')
-    #CTI: desc.
-    params.add_argument('--validation-alignment-matrix', '-vam',
-                        type=regular_file(),
-                        help='Alignments for validation data (line-parallel with source and target files).')
 
 
 def add_prepared_data_args(params):

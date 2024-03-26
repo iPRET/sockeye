@@ -288,8 +288,6 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
     validation_sources = [str(os.path.abspath(source)) for source in validation_sources]
     validation_targets = [args.validation_target] + args.validation_target_factors
     validation_targets = [str(os.path.abspath(target)) for target in validation_targets]
-    validation_alignment_matrix = os.path.abspath(args.validation_alignment_matrix) \
-        if args.validation_alignment_matrix is not None else None
 
     #NOTE TO INGUS - it might be coshier to modify this warning thing.
     if utils.is_distributed():
@@ -310,8 +308,7 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
         train_iter, validation_iter, data_config, source_vocabs, target_vocabs = data_io.get_prepared_data_iters(
             prepared_data_dir=args.prepared_data, validation_sources=validation_sources,
             validation_targets=validation_targets, shared_vocab=shared_vocab, batch_size=args.batch_size,
-            batch_type=args.batch_type, batch_sentences_multiple_of=args.batch_sentences_multiple_of,
-            validation_alignment_matrix=validation_alignment_matrix)
+            batch_type=args.batch_type, batch_sentences_multiple_of=args.batch_sentences_multiple_of)
 
         # Check arguments used for blocking cross-attention between decoder and encoded prepended tokens
         if args.transformer_block_prepended_cross_attention:
@@ -420,9 +417,6 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
                         'Training and validation data must have the same number of target factors, '
                         'but found %d and %d.' % (len(source_vocabs), len(validation_sources)))
 
-        #NOTE TO INGUS - Maybe I have to make a warning for when alignment matrices are given in training
-        # but not validation.
-
         train_iter, validation_iter, config_data, data_info = data_io.get_training_data_iters(sources=sources,
                                                                                               targets=targets,
                                                                                               validation_sources=validation_sources,
@@ -441,8 +435,7 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
                                                                                               bucket_scaling=args.bucket_scaling,
                                                                                               end_of_prepending_tag=args.end_of_prepending_tag,
                                                                                               batch_sentences_multiple_of=args.batch_sentences_multiple_of,
-                                                                                              alignment_matrix=alignment_matrix,
-                                                                                              validation_alignment_matrix=validation_alignment_matrix)
+                                                                                              alignment_matrix=alignment_matrix)
 
         data_info_fname = os.path.join(output_folder, C.DATA_INFO)
         logger.info("Writing data config to '%s'", data_info_fname)
@@ -1188,7 +1181,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
         # https://github.com/pytorch/pytorch/pull/63552
         with torch.cuda.amp.autocast(cache_enabled=False) if args.amp else utils.no_context():  # type: ignore
             training_model = torch.jit.trace(training_model, (batch.source, batch.source_length,
-                                                             batch.target, batch.target_length), strict=False)
+                                                              batch.target, batch.target_length), strict=False)
         eval_iter.reset()
 
     if utils.is_distributed() and not utils.using_deepspeed():
