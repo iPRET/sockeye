@@ -68,6 +68,7 @@ class ModelConfig(Config):
     :param neural_vocab_selection: When True the model contains a neural vocab selection model that restricts
                                    the target output vocabulary to speed up inference.
     :param neural_vocab_selection_block_loss: When true the gradients of the NVS models are blocked before the encoder.
+    :param return_attention: Whether model has to return the alignment head's attentions.
     """
     config_data: data_io.DataConfig
     vocab_source_size: int
@@ -133,8 +134,7 @@ class SockeyeModel(pt.nn.Module):
         self.encoder = encoder.get_transformer_encoder(self.config.config_encoder, inference_only=inference_only,
                                                        dtype=self.dtype, clamp_to_dtype=clamp_to_dtype)
         self.decoder = decoder.get_decoder(self.config.config_decoder, inference_only=inference_only,
-                                           dtype=self.dtype, clamp_to_dtype=clamp_to_dtype,
-                                           return_attention=return_attention)
+                                           dtype=self.dtype, clamp_to_dtype=clamp_to_dtype)
         self.nvs = None
         if self.config.neural_vocab_selection:
             self.nvs = nvs.NeuralVocabSelection(model_size=self.config.config_encoder.model_size,
@@ -300,7 +300,7 @@ class SockeyeModel(pt.nn.Module):
                     step_input: pt.Tensor,
                     states: List[pt.Tensor],
                     vocab_slice_ids: Optional[pt.Tensor] = None) -> Tuple[pt.Tensor, pt.Tensor, List[pt.Tensor],
-                                                                          List[pt.Tensor], pt.Tensor]:
+                                                                          List[pt.Tensor], Optional[pt.Tensor]]:
         """
         One step decoding of the translation model.
 
@@ -310,7 +310,8 @@ class SockeyeModel(pt.nn.Module):
         :param vocab_slice_ids: Optional list of vocabulary ids to use
                                 for reduced matrix multiplication at the output layer.
 
-        :return: logits, KNN output if present otherwise None, list of new model states, other target factor logits.
+        :return: logits, KNN output if present otherwise None, list of new model states, other target factor logits,
+                 optionally alignment head attentions.
         """
         decode_step_inputs = [step_input, states]
         if vocab_slice_ids is not None:
@@ -641,6 +642,8 @@ class _DecodeStep(pt.nn.Module):
     Auxiliary module that wraps computation for a single decode step for a SockeyeModel.
     End-to-end traceable. Return values are put into a flat list to avoid return type constraints
     for traced modules.
+
+    IP: I'm not sure what constraints the second sentence is talking about. I think jit tracing still works.
     """
 
     def __init__(self,

@@ -380,13 +380,15 @@ class MultiHeadAttentionBase(pt.nn.Module):
                 key_values: pt.Tensor,
                 mask: Optional[pt.Tensor] = None) -> Tuple[pt.Tensor, pt.Tensor]:
         """
-        Returns context vectors of multi-head dot attention.
+        Returns context vectors and (optional) attention distribution of multi-head dot attention.
 
         :param queries: Query tensor. Shape: (queries_length, batch_size, depth).
         :param key_values: Keys/Values. Shape: (keys_values_length, batch_size, depth * 2).
         :param mask: Optional boolean attention mask. See DotAttentionCell for shape requirements.
         :return: Context vectors. Shape: (batch_size, query_max_length, output_depth).
+        Also optionally returns attention probabilities.
         """
+        #CTI: Gotta figure out what shape exactly and what exactly and update docstring.
 
         # (query_max_length, batch, depth)
         contexts, attention = self.dot_att(queries=queries, key_values=key_values, mask=mask)
@@ -578,8 +580,18 @@ def single_head_attention(query: pt.Tensor,
                           k_proj_weight: pt.Tensor,
                           attn_mask: Optional[pt.Tensor] = None) -> pt.Tensor:
     """
-    All this function does is just calculate attention for a single attention head.
-    Care I do not.
+    Minimalistic function that calculates attention probability distribution matrix for a single attention head.
+    This function exists to get attention probabilities before dropout, as
+    torch.nn.functional.multi_head_attention_forward returns the attention probability distribution post-dropout.
+    The code of this function should be equivalent to how attentions are calculated in multi_head_attention_forward.
+
+    :param query: Queries produced by decoder. Shape (target length, batch, query size)
+    :param key: Keys produced by encoder. Shape (source length, batch, key size)
+    :param q_proj_weight: Query projection for one attention head. Shape (post projection size, key size)
+    :param k_proj_weight: Key projection. Shape (post projection size, key size)
+    :param attn_mask: Bool tensor where True indicates to block attention to certain elements.
+                      Shape (target length, source length)
+    :return: Attention probability distributions. Shape (batch, target length, source length)
     """
     q = F.linear(query, q_proj_weight, None).transpose(0, 1)
     k = F.linear(key, k_proj_weight, None).transpose(0, 1)
@@ -606,6 +618,7 @@ class MultiHeadAttention(MultiHeadAttentionBase):
     :param dtype: Torch data type for parameters.
     :param clamp_to_dtype: Avoid -inf/inf by clamping outputs to min/max finite
                            values for their dtype.
+    :param return_attention: Whether to return alignment head's attention. If False, returns None.
     """
 
     def __init__(self,
@@ -616,8 +629,7 @@ class MultiHeadAttention(MultiHeadAttentionBase):
                  depth_key_value: int = 512,
                  dtype: Optional[pt.dtype] = None,
                  clamp_to_dtype: bool = False,
-                 return_attention: bool = False,
-                 attention_alignment_layer: int = 0) -> None:
+                 return_attention: bool = False) -> None:
         super().__init__(depth_att, heads, depth_out, dropout, dtype, clamp_to_dtype)
         self.ff_q = pt.nn.Linear(in_features=depth_out, out_features=depth_att, bias=False, dtype=dtype)
         self.ff_kv = pt.nn.Linear(in_features=depth_key_value, out_features=depth_att * 2, bias=False, dtype=dtype)
@@ -627,7 +639,6 @@ class MultiHeadAttention(MultiHeadAttentionBase):
         # Interleaved format is used for inference, non-interleaved format is used for fused MHA in training.
         self.kv_interleaved = False
         self.return_attention = return_attention
-        self.attention_alignment_layer = attention_alignment_layer
 
     def separate_kv(self):
         """Writes kv input projection parameters in non-interleaved format (compatible with F.multi_head_attention). """
@@ -679,7 +690,8 @@ class MultiHeadAttention(MultiHeadAttentionBase):
         :param key_values: Memory data to attend to. Shape: (key_values_length, batch, input_depth).
         :param mask: Optional attention mask. See DotAttentionCell for shape information.
         :param projected_memory_kv: Optional previously projected memory keys and values.
-        :return: tensor of shape (query_seq_len, batch, output_depth).
+        :return: tensor of shape (query_seq_len, batch, output_depth). Also optionally returns the alignment head's
+                 attention. Shape (batch, queries_length, key_values_length).
         """
         if self.training:  # use fused multi-head attention op during training
             assert not self.kv_interleaved

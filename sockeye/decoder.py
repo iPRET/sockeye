@@ -33,10 +33,8 @@ DecoderConfig = Union[TransformerConfig]  # type: ignore
 def get_decoder(config: DecoderConfig,
                 inference_only: bool = False,
                 dtype: Optional[pt.dtype] = None,
-                clamp_to_dtype: bool = False,
-                return_attention: bool = False) -> 'Decoder':
-    return Decoder.get_decoder(config=config, inference_only=inference_only, dtype=dtype, clamp_to_dtype=clamp_to_dtype,
-                               return_attention=return_attention)
+                clamp_to_dtype: bool = False) -> 'Decoder':
+    return Decoder.get_decoder(config=config, inference_only=inference_only, dtype=dtype, clamp_to_dtype=clamp_to_dtype)
 
 
 class Decoder(pt.nn.Module):
@@ -72,8 +70,7 @@ class Decoder(pt.nn.Module):
                     config: DecoderConfig,
                     inference_only: bool,
                     dtype: Optional[pt.dtype] = None,
-                    clamp_to_dtype: bool = False,
-                    return_attention: bool = False) -> 'Decoder':
+                    clamp_to_dtype: bool = False) -> 'Decoder':
         """
         Creates decoder based on config type.
 
@@ -90,7 +87,7 @@ class Decoder(pt.nn.Module):
             raise ValueError('Unsupported decoder configuration %s' % config_type.__name__)
         decoder_cls = cls.__registry[config_type]
         return decoder_cls(config=config, inference_only=inference_only, dtype=dtype,  # type: ignore
-                           clamp_to_dtype=clamp_to_dtype, return_attention=return_attention)  # type: ignore
+                           clamp_to_dtype=clamp_to_dtype)  # type: ignore
 
     @abstractmethod
     def __init__(self):
@@ -150,9 +147,7 @@ class TransformerDecoder(Decoder):
                  config: TransformerConfig,
                  inference_only: bool = False,
                  dtype: Optional[pt.dtype] = None,
-                 clamp_to_dtype: bool = False,
-                 return_attention: bool = False) -> None:
-        #CTI: gotta move return attention to transformer config.
+                 clamp_to_dtype: bool = False) -> None:
         Decoder.__init__(self)
         pt.nn.Module.__init__(self)
         self.config = config
@@ -174,7 +169,6 @@ class TransformerDecoder(Decoder):
                 return_attention=return_attention))
         self.layers = pt.nn.ModuleList(  # using ModuleList because we have additional inputs
             module_list)
-        #CTI: Probably gotta make it so that only the correct attention is returned.
 
         self.final_process = transformer.TransformerProcessBlock(sequence=config.preprocess_sequence,
                                                                  dropout=config.dropout_prepost,
@@ -269,9 +263,11 @@ class TransformerDecoder(Decoder):
 
         :param inputs: Encoded source: (batch_size, source_encoded_max_length, encoder_depth).
         :param states: List of initial states, as given by init_state_from_encoder().
-        :return: Decoder output. Shape: (batch_size, target_embed_max_length, decoder_depth).
+        :return: Decoder output. Shape: (batch_size, target_embed_max_length, decoder_depth). Optionally also returns
+        alignment head attentions.
         """
-        outputs, _, alignment_head_attention = self.forward(inputs, states) #This should fully run the model on a batch.
+        #CTI: Figure out what shape the attentions are.
+        outputs, _, alignment_head_attention = self.forward(inputs, states)
         return outputs, alignment_head_attention
 
     def forward(self, step_input: pt.Tensor, states: List[pt.Tensor]) -> Tuple[pt.Tensor, List[pt.Tensor], pt.Tensor]:

@@ -126,6 +126,8 @@ class TransformerDecoderBlock(pt.nn.Module):
     """
     A transformer decoder block consists of an autoregressive attention block, encoder attention,
     and a feed-forward layer with pre/post process blocks in between.
+
+    :param return_attention: Bool flag for whether decoder block should return alignment head attentions.
     """
 
     def __init__(self,
@@ -179,8 +181,7 @@ class TransformerDecoderBlock(pt.nn.Module):
                                                                depth_key_value=config.depth_key_value,
                                                                dtype=dtype,
                                                                clamp_to_dtype=clamp_to_dtype,
-                                                               return_attention=return_attention,
-                                                               attention_alignment_layer=config.attention_alignment_layer)
+                                                               return_attention=return_attention)
         self.post_enc_attention = TransformerProcessBlock(sequence=config.postprocess_sequence,
                                                           dropout=config.dropout_prepost,
                                                           num_hidden=config.model_size,

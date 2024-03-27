@@ -365,8 +365,10 @@ def create_shards(source_fnames: List[str],
     :param target_fnames: The path to the target text (and optional token-parallel factor files).
     :param num_shards: The total number of shards.
     :param output_prefix: The prefix under which the shard files will be created.
-    :return: List of tuples of source (and source factor) file names and target (and target factor) file names for each
-             shard and a flag of whether the returned file names are temporary and can be deleted.
+    :param alignment_matrix_fname: Path to the alignment matrix file.
+    :return: List of tuples of [source (and source factor) file names, target (and target factor) file names, and
+    alignment matrix file name] for each shard and a flag of whether the returned file names are temporary and can be
+    deleted.
     """
     #CTI: make naming of matrix variables uniform.
     if num_shards == 1:
@@ -435,14 +437,15 @@ def get_prepended_token_length(ids: List[int], eop_id: int) -> int:
         return 0
 
 #CTI: This function may need to be in a different place.
-def create_alignment_matrix(indexes, size):
+def create_alignment_matrix(indexes: List[Tuple[int, int]], size: Tuple[int, int]):
     #CTI: Needs better description.
     """
-    Creates a sparse alignment matrix from a list of indexes,
-    e.g. indexes = [(1, 2), (1, 3), (2, 5), ...]
-    size is assumed to be (source len, target len)
-    I'll assume the tuples are (source idx, target idx).
-    Returns sparse_coo_tensor of shape [1, target len * source len] reshaped from [target len, source len].
+    Creates a sparse alignment matrix from a list of indexes.
+
+    :param indexes: List of alignment indexes. In each tuple, the first number is the source token index and the
+    second number is the target token index.
+    :param size: Tuple (source length, target length).
+    :return: Sparse COO tensor of shape [1, target length * source length] reshaped from [target length, source length].
     """
     amounts = [0] * size[1]
     for _, target_idx in indexes:
@@ -474,7 +477,8 @@ def create_alignment_matrix(indexes, size):
 class RawParallelDatasetLoader:
     #NOTE TO INGUS - Definitely will have to update this docstring.
     """
-    Loads a data set of variable-length parallel source/target sequences into buckets of tensors.
+    Loads a data set of variable-length parallel source/target sequences with optional alignment matrices into
+    buckets of tensors.
 
     :param buckets: Bucket list.
     :param eos_id: End-of-sentence id.
@@ -639,10 +643,10 @@ def save_shard(shard_idx: int,
                output_prefix: str,
                keep_tmp_shard_files: bool,
                shard_alignment_matrix: Optional[str] = None):
-    #CTI: Update doc.
     """
     Load raw shard source and target data files, map to integers using the corresponding vocabularies,
     convert data into tensors and save to disk.
+    Optionally also load alignment matrices, converts them to sparse tensors and saves to disk.
     Optionally it can delete the source/target files.
 
     :param shard_idx: The index of the shard.
@@ -656,6 +660,7 @@ def save_shard(shard_idx: int,
     :param buckets: Bucket list.
     :param output_prefix: The prefix of the output file name.
     :param keep_tmp_shard_files: Keep the sources/target files when it is True otherwise delete them.
+    :param shard_alignment_matrix: Alignment matrix file name.
     :return: Shard statistics.
     """
 
@@ -766,7 +771,6 @@ def prepare_data(source_fnames: List[str],
                                            pad_id=C.PAD_ID,
                                            eop_id=eop_id)
 
-    #CTI: bla bla variable name uniformity.
     # Process shards in parallel
     args = ((shard_idx, data_loader, shard_sources, shard_targets, source_vocabs, target_vocabs,
              length_statistics.length_ratio_mean, length_statistics.length_ratio_std, buckets, output_prefix,
@@ -1025,7 +1029,6 @@ def get_training_data_iters(sources: List[str],
                             alignment_matrix: Optional[str] = None,
                             permute: bool = True) -> Tuple['BaseParallelSampleIter', Optional['BaseParallelSampleIter'],
                                                            'DataConfig', 'DataInfo']:
-    #CTI: Update docs.
     """
     Returns data iterators for training and validation data.
 
@@ -1049,6 +1052,7 @@ def get_training_data_iters(sources: List[str],
     :param allow_empty: Unless True if no sentences are below or equal to the maximum length an exception is raised.
     :param batch_sentences_multiple_of: Round the number of sentences in each
         bucket's batch to a multiple of this value (word-based batching only).
+    :param alignment_matrix: Path to optional alignment matrix file.
     :param permute: Randomly shuffle the parallel data.
 
     :return: Tuple of (training data iterator, validation data iterator, data config).
@@ -1142,7 +1146,6 @@ def get_scoring_data_iters(sources: List[str],
                            max_seq_len_source: int,
                            max_seq_len_target: int,
                            eop_id: int = C.INVALID_ID) -> 'BaseParallelSampleIter':
-    #CTI: Update doc.
     """
     Returns a data iterator for scoring. The iterator loads data on demand,
     batch by batch, and does not skip any lines. Lines that are too long
@@ -1371,10 +1374,12 @@ class SequenceReader:
 #CTI: I suspect the alignment matrix reader is expected to only read like strings???
 #I have to figure out what in gods' name they expect.
 class AlignmentMatrixReader:
-    #CTI: I have to change up the output of this class so it's tensor-ey.
-    #NOTE TO INGUS - Bad docstring.
     """
-    Iterator that reads one alignment matrix at a time.
+    Alignment matrix iterator. Streams and parses alignment matrix alignment indexes from a file.
+    Returns lists of alignment index tuples.
+
+    :param path: path to alignment matrix file.
+    It's assumed there's one alignment matrix per line.
     """
 
     def __init__(self,
@@ -1409,17 +1414,17 @@ def create_sequence_readers(sources: List[str], targets: List[str],
 #CTI: I'm not sure I got the type here right,
 def parallel_iter(source_iterables: Sequence[Iterable[Optional[Any]]],
                   target_iterables: Sequence[Iterable[Optional[Any]]],
-                  alignment_matrix_iterable: Optional[Iterable[Optional[Any]]] = None,
+                  alignment_matrix_iterable: Optional[Iterable[Any]] = None,
                   skip_blanks: bool = True,
                   check_token_parallel: bool = True):
-    #CTI: Description
     """
     Creates iterators over parallel iterables by calling iter() on the iterables
     and chaining to parallel_iterate(). The purpose of the separation is to allow
     the caller to save iterator state between calls, if desired.
 
     :param source_iterables: A list of source iterables.
-    :param target_iterables: A target iterable.
+    :param target_iterables: A list of target iterables.
+    :param alignment_matrix_iterable: An alignment matrix iterable.
     :param skip_blanks: Whether to skip empty target lines.
     :param check_token_parallel: Whether to check if the tokens are parallel or not.
     :return: Iterators over sources and target.
@@ -1427,23 +1432,25 @@ def parallel_iter(source_iterables: Sequence[Iterable[Optional[Any]]],
     source_iterators = [iter(s) for s in source_iterables]
     target_iterators = [iter(t) for t in target_iterables]
     alignment_matrix_iterator = iter(alignment_matrix_iterable) if alignment_matrix_iterable is not None else None
-    return parallel_iterate(source_iterators, target_iterators, alignment_matrix_iterator, skip_blanks, check_token_parallel)
+    return parallel_iterate(source_iterators, target_iterators, alignment_matrix_iterator, skip_blanks,
+                            check_token_parallel)
 
 
 def parallel_iterate(source_iterators: Sequence[Iterator[Optional[Any]]],
                      target_iterators: Sequence[Iterator[Optional[Any]]],
-                     alignment_matrix_iterator: Optional[Iterator[Optional[Any]]]=None,
+                     alignment_matrix_iterator: Optional[Iterator[Any]]=None,
                      skip_blanks: bool = True,
                      check_token_parallel: bool = True):
     """
-    Yields parallel source(s), target sequences from iterables.
+    Yields parallel source(s), target sequences, and optionally alignment matrix indices from iterables.
     Checks for token parallelism in source sequences.
     Skips pairs where element in at least one iterable is None.
     Checks that all iterables have the same number of elements.
     Can optionally continue from an already-begun iterator.
 
     :param source_iterators: A list of source iterators.
-    :param target_iterators: A list of source iterators.
+    :param target_iterators: A list of target iterators.
+    :param alignment_matrix_iterator: An alignment matrix iterator.
     :param skip_blanks: Whether to skip empty target lines.
     :param check_token_parallel: Whether to check if the tokens are parallel or not.
     :return: Iterators over sources and target.
@@ -1520,8 +1527,11 @@ import re
 def parse_alignment_matrix_indices(line: str):
     #NOTE TO INGUS - make a better description.
     """
-    Turns string e.g. "4-3 2-1    \t4-3"
-    into list of tuples e.g. [(4, 3), (2, 1), (4, 3)]
+    Turns string representing alignments into a list of tuples (source index, target index).
+    For example, turns the string "4-2 1-3  \t3-7" into [(4, 2), (1, 3), (3, 7)].
+
+    :param line: String to be parsed.
+    :return: List of tuples, where each tuple (source index, target index) represents an alignment between tokens.
     """
     index_strings = re.findall(r'\d+', line)
     indexes = [int(st) for st in index_strings]
@@ -1531,10 +1541,12 @@ def parse_alignment_matrix_indices(line: str):
 def slice_csr_tensor(tens, start, end):
     """
     Function slices CSR tensor along dense (the row dimension, i.e. shape[0]) dimension.
-    tens - 2D sparse CSR tensor.
-    start - slice beginning index (inclusive).
-    end - slice end index (exclusive).
     Runtime is proportional to amount of non-zero values in result slice.
+
+    :param tens: 2D sparse CSR tensor.
+    :param start: Slice beginning index (inclusive).
+    :param end: Slice end index (exclusive).
+    :return: Returns the slice as a sparse CSR tensor.
     """
     crow_indices = tens.crow_indices()
     col_indices = tens.col_indices()
@@ -2269,7 +2281,6 @@ def create_batch_from_parallel_sample(source: torch.Tensor,
                                       label: torch.Tensor,
                                       prepended_source_length: Optional[torch.Tensor] = None,
                                       alignment_matrix: Optional[torch.Tensor] = None) -> Batch:
-    #CTI: Update desc.
     """
     Creates a Batch instance from parallel data.
 
@@ -2277,6 +2288,9 @@ def create_batch_from_parallel_sample(source: torch.Tensor,
     :param target: Target tensor. Shape: (batch, max_target_length, num_target_factors).
     :param label: Time-shifted label tensor. Shape: (batch, max_target_length, num_target_factors).
     :param prepended_source_length: Length of prepended source tokens tensor. Shape: (batch,).
+    :param alignment_matrix: Sparse CSR tensor with alignment matrices.
+    Shape (batch, max_source_length * max_target_length)
+    :return: Batch
     """
     source_words = source[:, :, 0]
     all_source_length = (source_words != C.PAD_ID).sum(dim=1)  # Shape: (batch,)

@@ -14,7 +14,6 @@
 """
 Implements a thin wrapper around Translator to compute BLEU scores on (a sample of) validation data during training.
 """
-import itertools
 import logging
 import os
 import random
@@ -105,8 +104,7 @@ class CheckpointDecoder:
                 sample_size = len(inputs_sentences[0])
             if sample_size < len(inputs_sentences[0]):
                 sentences = parallel_subsample(
-                    inputs_sentences + targets_sentences,
-                    sample_size, random_seed)
+                    inputs_sentences + targets_sentences, sample_size, random_seed)
                 self.inputs_sentences = sentences[0:len(inputs_sentences)]
                 self.targets_sentences = sentences[len(inputs_sentences):]
             else:

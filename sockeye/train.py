@@ -509,6 +509,7 @@ def create_decoder_config(args: argparse.Namespace,
     :param max_seq_len_source: Maximum source sequence length.
     :param max_seq_len_target: Maximum target sequence length.
     :param num_embed_target: The size of the target embedding.
+    :param return_attention: Bool flag for whether decoder has to return alignment head attentions.
     :return: The config for the decoder.
     """
     _, decoder_num_layers = args.num_layers

@@ -124,10 +124,6 @@ class TranslatorInput:
     If `--output-type json` is selected, all such fields that are not fields used or changed by
     Sockeye will be included in the output JSON object. This provides a mechanism for passing
     fields through the call to Sockeye.
-
-    DCTI: I guess this object just contains All the information about a single sentence necessary to run a sockeye
-    model, and evaluate the losses.
-    For some unknown reason it's in a format that's not tensors, but more like strings.
     """
 
     sentence_id: SentenceId
@@ -458,8 +454,7 @@ def make_input_from_factored_string(sentence_id: SentenceId,
 
     return TranslatorInput(sentence_id=sentence_id, tokens=tokens, factors=factors)
 
-def make_input_from_multiple_strings(sentence_id: SentenceId,
-                                     strings: List[str]) -> TranslatorInput:
+def make_input_from_multiple_strings(sentence_id: SentenceId, strings: List[str]) -> TranslatorInput:
     """
     Returns a TranslatorInput object from multiple strings, where the first element corresponds to the surface tokens
     and the remaining elements to additional factors. All strings must parse into token sequences of the same length.
@@ -495,6 +490,7 @@ class TranslatorOutput:
     factor_translations: List of factor outputs.
     factor_tokens: List of list of secondary factor tokens.
     factor_scores: List of secondary factor scores.
+    alignment_head_attention: List of list (representing a 2D array) of attentions between target and source tokens.
     """
     sentence_id: SentenceId
     translation: str
@@ -641,7 +637,6 @@ def _reduce_nbest_translations(nbest_translations_list: List[Translation]) -> Tr
     scores = [translation.scores for translation in nbest_translations_list]
 
     nbest_translations = NBestTranslations(sequences, scores)
-    #CTI: Have to understand what in god's name this nbest shit is.
     return Translation(best_translation.target_ids,
                        best_translation.scores,
                        nbest_translations,
@@ -1297,12 +1292,15 @@ class Translator:
         """
         Takes a set of data pertaining to a single translated item, performs slightly different
         processing on each, and merges it into a Translation object.
+
         :param sequence: Array of word ids. Shape: (bucketed_length, num_target_factors).
         :param length: The length of the translated segment.
         :param seq_scores: Array of length-normalized negative log-probs, one for each factor.
         :param estimated_reference_length: Estimated reference length (if any).
+        :param alignment_head_attention: ???
         :return: A Translation object.
         """
+        #CTI: I have to figure out the alignment_head attention shape and update the documentation.
         if unshift_target_factors:
             sequence = _unshift_target_factors(sequence, fill_last_with=C.EOS_ID)
         else:

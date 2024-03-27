@@ -396,7 +396,10 @@ class MSELoss(Loss):
         return LossMetric(name=C.LENRATIO_MSE)
 
 class AlignmentMatrixKLDivergenceLoss(Loss):
-    #CTI: Docs needed
+    """
+    Computes the KLDivergence between the alignment head's attention probabilities and the ground turth alignment
+    matrix.
+    """
 
     def __init__(self,
                  name: str = "Alignment Matrix KL Divergence",
@@ -406,10 +409,15 @@ class AlignmentMatrixKLDivergenceLoss(Loss):
         super().__init__(name=name, output_name=output_name, label_name=label_name, weight=weight)
         #CTI: Default-names for variables are probably garbo.
     def forward(self, alignment_head_attention: pt.Tensor, alignment_matrix: pt.Tensor) -> Tuple[pt.Tensor, pt.Tensor]:
-        #CTI: Docs
-        #CTI: Imma assume the attention matrix is of the shape [batch, target, source]
+        """
+        Returns the loss.
 
-        #CTI: gotta probably pass the pre-softmax loss instead of post softmax.
+        :param alignment_head_attention: Attention probability distribution output of alignment attention head.
+                                         Shape [batch, target length, source length]
+        :param alignment_matrix: Ground truth alignments normalized along source length dimension.
+                                 Shape [batch, target length, source length]
+        :return: Loss value over batch, and the number 1.
+        """
         #CTI: rename attention to logits or whatver makes sense.
         #This is in case we have alignments during training but don't have them for testing.
         res_device = alignment_head_attention.device
