@@ -389,7 +389,6 @@ class MultiHeadAttentionBase(pt.nn.Module):
                  Optionally returns attention probabilities.
                  Shape: (batch_size * head count, queries_length, keys_vlaues_length)
         """
-        #CTI: Gotta figure out what shape exactly and what exactly and update docstring.
 
         # (query_max_length, batch, depth)
         contexts, attention = self.dot_att(queries=queries, key_values=key_values, mask=mask)

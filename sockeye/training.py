@@ -402,7 +402,6 @@ class EarlyStoppingTrainer:
         with (self.model_object.model.no_sync() if utils.is_distributed() and not is_update_batch  # type: ignore
         and not utils.using_deepspeed() else utils.no_context()):
             loss_values, num_samples = self._forward_backward(batch, is_update_batch)
-            #DCTI: ^This here line probably does a full batch, including calculates gradients.
 
         for loss_func, loss_value, num_samples in zip(self.loss_functions, loss_values, num_samples):
             loss_func.metric.update(loss_value.item(), num_samples.item())

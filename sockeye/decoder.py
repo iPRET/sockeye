@@ -266,7 +266,6 @@ class TransformerDecoder(Decoder):
         :return: Decoder output. Shape: (batch_size, target_embed_max_length, decoder_depth). Optionally also returns
         alignment head attentions.
         """
-        #CTI: Figure out what shape the attentions are.
         outputs, _, alignment_head_attention = self.forward(inputs, states)
         return outputs, alignment_head_attention
 
@@ -276,15 +275,12 @@ class TransformerDecoder(Decoder):
             steps, source_mask, *other = states
             source_encoded = None  # use constant pre-computed key value projections from the states
             enc_att_kv = other[:self.config.num_layers]
-            autoregr_states = other[self.config.num_layers:] #CTI: What are autoregressive states?
+            autoregr_states = other[self.config.num_layers:]
         else:
             if any(layer.needs_mask for layer in self.layers):
                 target_mask = self.autoregressive_mask(step_input)  # mask: (length, length)
-                #DCTI: This line creates a mask for the ?target?
-                #DCTI: But to do so. it looks at step_input
             steps, source_encoded, source_mask, *autoregr_states = states
             enc_att_kv = [None for _ in range(self.config.num_layers)]
-        #CTI: What does this code do??? v
         if any(layer.num_state_tensors > 1 for layer in self.layers):
             # separates autoregressive states by layer
             states_iter = iter(autoregr_states)
@@ -329,7 +325,6 @@ class TransformerDecoder(Decoder):
 
         if alignment_head_attention is None:
             alignment_head_attention = pt.zeros(0)
-        #CTI: Gotta remove the return_attention parameter.
 
         return (target, new_states, alignment_head_attention)
 
