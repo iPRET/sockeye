@@ -311,8 +311,6 @@ class TransformerDecoder(Decoder):
                                                                 enc_att_kv=layer_enc_att_kv)
             if idx == self.config.attention_alignment_layer:
                 alignment_head_attention = attention
-                alignment_head_attention = alignment_head_attention.reshape([batch, -1, target_max_len,
-                                                                             source_max_len])[:, 0]
 
             new_autoregr_states += [*new_layer_autoregr_state]
 

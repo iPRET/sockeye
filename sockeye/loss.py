@@ -397,17 +397,16 @@ class MSELoss(Loss):
 
 class AlignmentMatrixKLDivergenceLoss(Loss):
     """
-    Computes the KLDivergence between the alignment head's attention probabilities and the ground turth alignment
+    Computes the KLDivergence between the alignment head's attention probabilities and the ground truth alignment
     matrix.
     """
 
     def __init__(self,
-                 name: str = "Alignment Matrix KL Divergence",
+                 name: str = "alignment-matrix-kl-divergence",
                  weight: float = 1.0,
-                 output_name: str = "attention",
-                 label_name: str = "alignment_matrix_label") -> None:
+                 output_name: str = C.ATTENTION_NAME,
+                 label_name: str = C.ALIGNMENT_MATRIX_LABEL) -> None:
         super().__init__(name=name, output_name=output_name, label_name=label_name, weight=weight)
-        #CTI: Default-names for variables are probably garbo.
     def forward(self, alignment_head_attention: pt.Tensor, alignment_matrix: pt.Tensor) -> Tuple[pt.Tensor, pt.Tensor]:
         """
         Returns the loss.
@@ -418,9 +417,8 @@ class AlignmentMatrixKLDivergenceLoss(Loss):
                                  Shape [batch, target length, source length]
         :return: Loss value over batch, and the number 1.
         """
-        #CTI: rename attention to logits or whatver makes sense.
-        #This is in case we have alignments during training but don't have them for testing.
         res_device = alignment_head_attention.device
+        #This is necessary because during evaluation we don't have alignment matrices.
         if alignment_matrix.numel() == 0:
             return pt.zeros(1, device=res_device), pt.ones(1, device=res_device)
 
@@ -432,4 +430,5 @@ class AlignmentMatrixKLDivergenceLoss(Loss):
         return loss, num_samples
 
     def create_metric(self) -> 'LossMetric':
-        return LossMetric(name='alignment-matrix-cross-entropy')
+        #There's a problem that the metric is not useful during evaulation, because we don't do translation forcing.
+        return LossMetric(name='alignment-matrix-kl-divergence')

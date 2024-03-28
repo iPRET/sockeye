@@ -1297,10 +1297,10 @@ class Translator:
         :param length: The length of the translated segment.
         :param seq_scores: Array of length-normalized negative log-probs, one for each factor.
         :param estimated_reference_length: Estimated reference length (if any).
-        :param alignment_head_attention: ???
+        :param alignment_head_attention: Array of alignment head attentions for translation.
+                                         Shape: [target length, source length]
         :return: A Translation object.
         """
-        #CTI: I have to figure out the alignment_head attention shape and update the documentation.
         if unshift_target_factors:
             sequence = _unshift_target_factors(sequence, fill_last_with=C.EOS_ID)
         else:

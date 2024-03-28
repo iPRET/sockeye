@@ -1000,17 +1000,12 @@ class BeamSearch(Search):
                                                                                                                vocab_slice_ids,
                                                                                                                target_prefix_factor_mask,
                                                                                                                self.output_factor_vocab_size)
-            #Ok at this point target_dists and attention are parallel
-            #attention - [80, 1, sourcelen]
-            #target_dist - [80, 16]
-
 
             # (2) Produces the accumulated cost of target words in each row.
             # There is special treatment for finished rows.
             # Finished rows are inf everywhere except column zero, which holds the accumulated model score
             scores, lengths = self._update_scores(target_dists, finished, scores_accumulated,
                                                   lengths, max_output_lengths, pad_dist, eos_dist)
-            #scores here contains info on best continuations for each hypothesis I guess.
 
             if prefix_masks is not None and t <= prefix_masks_length:
                 # Make sure search selects the current prefix token
@@ -1019,7 +1014,6 @@ class BeamSearch(Search):
             # (3) Get beam_size winning hypotheses for each sentence block separately. Only look as
             # far as the active beam size for each sentence.
             if self._sample is not None:
-                #CTI: Fuck this for now.
                 best_hyp_indices, best_word_indices, scores_accumulated = self._sample(scores, target_dists, finished)
             else:
                 # On the first timestep, all hypotheses have identical histories, so force topk() to choose extensions
@@ -1034,9 +1028,6 @@ class BeamSearch(Search):
                     logger.debug("Tracing _top")
                     self._traced_top = pt.jit.trace(self._top, (scores,))
                 best_hyp_indices, best_word_indices, scores_accumulated = self._traced_top(scores)
-                #Now I believe what happens here is that scores are used to understand what are the best hypotheses
-                #How exactly does it do it tho? It's the TopK class
-                #It return the hypotheses and word indices within each beam, I guess that's why they add the offset soon after.
                 if batch_size > 1:
                     # Offsetting the indices to match the shape of the scores matrix
                     best_hyp_indices = best_hyp_indices + offset
@@ -1064,9 +1055,6 @@ class BeamSearch(Search):
             best_word_indices, finished, \
             (scores_accumulated, *factor_scores_accumulated), \
             lengths, estimated_reference_lengths = self._traced_sort_norm_and_update_finished(*_sort_inputs)
-            #Ok ok, hold the phone, what in god's name does traced sort norm do???
-            #I believe this doesn't reorder the hypotheses, but it reorders everything else associated.
-            #Maybe I should push attentions into this function
             # Collect best hypotheses, best word indices
             best_word_indices_list.append(best_word_indices)
             best_hyp_indices_list.append(best_hyp_indices)
@@ -1083,7 +1071,6 @@ class BeamSearch(Search):
         logger.debug("Finished after %d out of %d steps.", t, max_iterations)
 
         # (9) Sort the hypotheses within each sentence (normalization for finished hyps may have unsorted them).
-        #Ok shit starts getting fucky here. Another sort is being done.
         folded_accumulated_scores = scores_accumulated.reshape(batch_size, self.beam_size)
         indices = folded_accumulated_scores.argsort(dim=1, descending=False).reshape(-1)
         # 1 = scores_accumulated.size()[1]

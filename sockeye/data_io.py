@@ -357,7 +357,6 @@ def create_shards(source_fnames: List[str],
                   num_shards: int,
                   output_prefix: str,
                   alignment_matrix_fname: Optional[str] = None) -> Tuple[List[Tuple[Tuple[str, ...], Tuple[str, ...], str]], bool]:
-    #CTI: Update doc.
     """
     Assign source/target sentence pairs to shards at random.
 
@@ -367,10 +366,9 @@ def create_shards(source_fnames: List[str],
     :param output_prefix: The prefix under which the shard files will be created.
     :param alignment_matrix_fname: Path to the alignment matrix file.
     :return: List of tuples of [source (and source factor) file names, target (and target factor) file names, and
-    alignment matrix file name] for each shard and a flag of whether the returned file names are temporary and can be
-    deleted.
+             alignment matrix file name] for each shard and a flag of whether the returned file names are temporary and
+             can be deleted.
     """
-    #CTI: make naming of matrix variables uniform.
     if num_shards == 1:
         return [(tuple(source_fnames), tuple(target_fnames), alignment_matrix_fname)], True
     os.makedirs(output_prefix, exist_ok=True)
@@ -378,9 +376,8 @@ def create_shards(source_fnames: List[str],
                             for f in range(len(source_fnames))]
     targets_shard_fnames = [[os.path.join(output_prefix, C.SHARD_TARGET % i) + ".%d" % f for i in range(num_shards)]
                             for f in range(len(target_fnames))]
-    alignment_matrix_shard_fnames = [os.path.join(output_prefix, C.SHARD_ALGNMENT_MATRIX % i) for i in range(num_shards)] \
+    alignment_matrix_shard_fnames = [os.path.join(output_prefix, C.SHARD_ALIGNMENT_MATRIX % i) for i in range(num_shards)] \
         if alignment_matrix_fname is not None else []
-    #CTI: ^Fix this bug.
 
     with ExitStack() as exit_stack:
         sources_shards = [[exit_stack.enter_context(smart_open(f, mode="wb")) for f in sources_shard_fnames[i]] for i in
@@ -436,14 +433,12 @@ def get_prepended_token_length(ids: List[int], eop_id: int) -> int:
         # the end-of-prepending tag is not in the token list
         return 0
 
-#CTI: This function may need to be in a different place.
 def create_alignment_matrix(indexes: List[Tuple[int, int]], size: Tuple[int, int]):
-    #CTI: Needs better description.
     """
     Creates a sparse alignment matrix from a list of indexes.
 
     :param indexes: List of alignment indexes. In each tuple, the first number is the source token index and the
-    second number is the target token index.
+                    second number is the target token index.
     :param size: Tuple (source length, target length).
     :return: Sparse COO tensor of shape [1, target length * source length] reshaped from [target length, source length].
     """
@@ -475,7 +470,6 @@ def create_alignment_matrix(indexes: List[Tuple[int, int]], size: Tuple[int, int
     return coo_tensor
 
 class RawParallelDatasetLoader:
-    #NOTE TO INGUS - Definitely will have to update this docstring.
     """
     Loads a data set of variable-length parallel source/target sequences with optional alignment matrices into
     buckets of tensors.
@@ -583,20 +577,15 @@ class RawParallelDatasetLoader:
                 data_prepended_source_length[buck_index][sample_index] = get_prepended_token_length(sources[0],
                                                                                                     self.eop_id)
             if alignment_matrix_iterable is not None:
-                # Tuple of metadata (ids, weights)
                 data_alignment_matrix[buck_index].append(alignment_matrix)
 
             bucket_sample_index[buck_index] += 1
-
-        #NOTE TO INGUS - There was a check here for whether the sample count of meta data is the same as sentence count.
-        #idk why that's important.
 
         data_source_tensors = [torch.from_numpy(data) for data in data_source]
         data_target_tensors = [torch.from_numpy(data) for data in data_target]
         data_prepended_source_length_tensors = [torch.from_numpy(data) for data in data_prepended_source_length] \
             if data_prepended_source_length is not None else None
 
-        #CTI: make name of data_alignment_matrices more uniform.
         data_alignment_matrix_tensors = None
         if alignment_matrix_iterable is not None:
             data_alignment_matrix_tensors = []
@@ -668,7 +657,6 @@ def save_shard(shard_idx: int,
     shard_stat_accumulator = DataStatisticsAccumulator(buckets, source_vocabs[0], target_vocabs[0],
                                                        length_ratio_mean, length_ratio_std)
 
-    #CTI: Make naming of matrices more uniform.
     # Shards contain the raw sentences. Need to map to integers using the vocabs and add BOS/EOS
     sources_sentences, targets_sentences = create_sequence_readers(shard_sources, shard_targets, source_vocabs, target_vocabs)
     alignment_matrix_iterator = None  # type: Optional[AlignmentMatrixReader]
@@ -937,7 +925,6 @@ def get_prepared_data_iters(prepared_data_dir: str,
     version_file = os.path.join(prepared_data_dir, C.PREPARED_DATA_VERSION_FILE)
     with open(version_file) as version_in:
         version = int(version_in.read())
-        #NOTE TO INGUS - perhaps I need to update this, if stuff becomes incompatible.
         check_condition(version in (C.PREPARED_DATA_VERSION, C.PREPARED_DATA_LEGACY_VERSION),
                         "The dataset %s was written in an incompatible format. "
                         "Please rerun data preparation with this version of Sockeye." % prepared_data_dir)
@@ -1371,25 +1358,27 @@ class SequenceReader:
                 sequence.append(self.eos_id)
             yield sequence
 
-#CTI: I suspect the alignment matrix reader is expected to only read like strings???
-#I have to figure out what in gods' name they expect.
 class AlignmentMatrixReader:
     """
     Alignment matrix iterator. Streams and parses alignment matrix alignment indexes from a file.
-    Returns lists of alignment index tuples.
+    Returns lists of source-target token alignment index tuples.
 
-    :param path: path to alignment matrix file.
-    It's assumed there's one alignment matrix per line.
+    :param path: Path to alignment matrix file.
+                 It's assumed there's one alignment matrix per line.
+    :param limit: Read limit.
     """
 
     def __init__(self,
-                 path: str) -> None:
+                 path: str,
+                 limit: Optional[int] = None) -> None:
         self.path = path
+        self.limit = limit
 
-    #NOTE TO INGUS - Maybe the limits were here for a reason. See MetadataReader.
     def __iter__(self):
         with smart_open(self.path) as indata:
-            for line in indata:
+            for idx, line in enumerate(indata):
+                if idx == self.limit:
+                    break
                 data = parse_alignment_matrix_indices(line)
                 yield data
 
@@ -1411,7 +1400,6 @@ def create_sequence_readers(sources: List[str], targets: List[str],
                                 zip(targets, vocab_targets)]
     return source_sequence_readers, target_sequence_readers
 
-#CTI: I'm not sure I got the type here right,
 def parallel_iter(source_iterables: Sequence[Iterable[Optional[Any]]],
                   target_iterables: Sequence[Iterable[Optional[Any]]],
                   alignment_matrix_iterable: Optional[Iterable[Any]] = None,
@@ -1424,7 +1412,7 @@ def parallel_iter(source_iterables: Sequence[Iterable[Optional[Any]]],
 
     :param source_iterables: A list of source iterables.
     :param target_iterables: A list of target iterables.
-    :param alignment_matrix_iterable: An alignment matrix iterable.
+    :param alignment_matrix_iterable: An optional alignment matrix iterable.
     :param skip_blanks: Whether to skip empty target lines.
     :param check_token_parallel: Whether to check if the tokens are parallel or not.
     :return: Iterators over sources and target.
@@ -1438,7 +1426,7 @@ def parallel_iter(source_iterables: Sequence[Iterable[Optional[Any]]],
 
 def parallel_iterate(source_iterators: Sequence[Iterator[Optional[Any]]],
                      target_iterators: Sequence[Iterator[Optional[Any]]],
-                     alignment_matrix_iterator: Optional[Iterator[Any]]=None,
+                     alignment_matrix_iterator: Optional[Iterator[Any]] = None,
                      skip_blanks: bool = True,
                      check_token_parallel: bool = True):
     """
@@ -1450,7 +1438,7 @@ def parallel_iterate(source_iterators: Sequence[Iterator[Optional[Any]]],
 
     :param source_iterators: A list of source iterators.
     :param target_iterators: A list of target iterators.
-    :param alignment_matrix_iterator: An alignment matrix iterator.
+    :param alignment_matrix_iterator: An optional alignment matrix iterator.
     :param skip_blanks: Whether to skip empty target lines.
     :param check_token_parallel: Whether to check if the tokens are parallel or not.
     :return: Iterators over sources and target.
@@ -1476,12 +1464,11 @@ def parallel_iterate(source_iterators: Sequence[Iterator[Optional[Any]]],
     if num_skipped > 0:
         logger.warning("Parallel reading of sequences skipped %d elements", num_skipped)
 
-    #CTI: Doublecheck the following couple of lines make sense.
     check_condition(
         all(next(cast(Iterator, s), None) is None for s in source_iterators) and \
         all(next(cast(Iterator, t), None) is None for t in target_iterators) and \
         (alignment_matrix_iterator is None or next(cast(Iterator, alignment_matrix_iterator), None) is None),
-        "Different number of lines in source(s) or target(s) or alignment matrices (if specified) iterables.")
+        "Different number of lines in source(s) or target(s) or alignment matrix (if specified) iterables.")
 
 
 def get_parallel_bucket(buckets: List[Tuple[int, int]],
@@ -1521,14 +1508,11 @@ def get_target_bucket(buckets: List[Tuple[int, int]],
             break
     return bucket_idx, bucket
 
-#NOTE TO INGUS - Probably gotta add a return type to the function.
-#also the location of this function is probably not correct.
 import re
-def parse_alignment_matrix_indices(line: str):
-    #NOTE TO INGUS - make a better description.
+def parse_alignment_matrix_indices(line: str) -> List[Tuple[int, int]]:
     """
     Turns string representing alignments into a list of tuples (source index, target index).
-    For example, turns the string "4-2 1-3  \t3-7" into [(4, 2), (1, 3), (3, 7)].
+    For example, turns the string "4-2 1-3 3-7" into [(4, 2), (1, 3), (3, 7)].
 
     :param line: String to be parsed.
     :return: List of tuples, where each tuple (source index, target index) represents an alignment between tokens.
@@ -1580,7 +1564,6 @@ class ParallelDataSet:
             check_condition(len(source) == len(prepended_source_length),
                             "Number of buckets for source/prepended_source_length do not match: %d/%d." %
                             (len(source), len(prepended_source_length)))
-        #DCTI: These are all lists of buckets of the relevant data.
         self.source = source
         self.target = target
         self.prepended_source_length = prepended_source_length
@@ -1680,9 +1663,12 @@ class ParallelDataSet:
                                     else am for am in alignment_matrix]
         # Sanity checks
         assert len(source) == len(target)
-        if prepended_source_length is not None:
-            assert len(source) == len(prepended_source_length)
-        #CTI: I guess I could add the sanity checks here.
+        for s, t in zip(source, target):
+            assert s.shape[0] == t.shape[0]
+        if alignment_matrix is not None:
+            assert len(source) == len(alignment_matrix)
+            for s, am in zip(source, alignment_matrix):
+                assert s.shape[0] == len(am)
 
         return ParallelDataSet(source, target, prepended_source_length, alignment_matrix)
 
@@ -1696,7 +1682,7 @@ class ParallelDataSet:
         :param seed: The random seed used for sampling sentences to fill up.
         :return: New dataset with buckets filled up to the next multiple of batch size
         """
-        #DCTI: I have no idea why there's list(X) everywhere. The objects are supposed to be lists anyway.
+        #My guess is the list(...)s are here to define new lists of the correct size.
         source = list(self.source)
         target = list(self.target)
         prepended_source_length = list(self.prepended_source_length) \
@@ -1932,7 +1918,6 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
         self.data_loader = data_loader
         self.sources_sentences, self.targets_sentences = create_sequence_readers(sources, targets,
                                                                                  source_vocabs, target_vocabs)
-        #CTI: variable name uniformity.
         self.alignment_matrix_iterator = None  # type: Optional[AlignmentMatrixReader]
         if alignment_matrix is not None:
             self.alignment_matrix_iterator = AlignmentMatrixReader(alignment_matrix)
@@ -1956,9 +1941,8 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
         # Read batch_size lines from the source stream
         sources_sentences = [[] for _ in self.sources_sentences]  # type: List[List[str]]
         targets_sentences = [[] for _ in self.targets_sentences]  # type: List[List[str]]
-        #CTI: on god gotta figure out a better name for this.
-        #CTI: maybe I need to add a #type here?
-        alignment_matrices = [] if self.alignment_matrix_iterator is not None else None
+        alignment_matrices = [] if self.alignment_matrix_iterator is not None \
+            else None  # type: Optional[List[List[Tuple[int, int]]]]
         num_read = 0
         for num_read, (sources, targets, alignment_matrix) in enumerate(
                 parallel_iterate(self.sources_iters, self.targets_iters, self.alignment_matrix_iter, skip_blanks=False), 1):
@@ -1997,7 +1981,6 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
                                         alignment_matrix_iterable=alignment_matrices,
                                         num_samples_per_bucket=[num_read])
 
-        #DCTI: And again a this function has awareness of the dataset class's internals for no reason.
         source = dataset.source[0]
         target, label = create_target_and_shifted_label_sequences(dataset.target[0])
         prepended_source_length = dataset.prepended_source_length[0] \
@@ -2289,7 +2272,7 @@ def create_batch_from_parallel_sample(source: torch.Tensor,
     :param label: Time-shifted label tensor. Shape: (batch, max_target_length, num_target_factors).
     :param prepended_source_length: Length of prepended source tokens tensor. Shape: (batch,).
     :param alignment_matrix: Sparse CSR tensor with alignment matrices.
-    Shape (batch, max_source_length * max_target_length)
+                             Shape (batch, max_source_length * max_target_length)
     :return: Batch
     """
     source_words = source[:, :, 0]

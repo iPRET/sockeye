@@ -285,7 +285,7 @@ class SockeyeModel(pt.nn.Module):
                  vocab selection prediction (if present, otherwise None).
         """
         source_embed = self.embedding_source(source)
-        target_embed = self.embedding_target(target) #DCTI: returns [batch, seq len, emb size]
+        target_embed = self.embedding_target(target)
         source_encoded, source_encoded_length, att_mask = self.encoder(source_embed, source_length)
         states = self.decoder.init_state_from_encoder(source_encoded, source_encoded_length, target_embed)
         nvs = None
@@ -340,21 +340,15 @@ class SockeyeModel(pt.nn.Module):
         # caching the encoder and embedding forward passes), turn off autograd
         # for the encoder and embeddings to save memory.
         with pt.no_grad() if self.train_decoder_only or self.forward_pass_cache_size > 0 else utils.no_context():
-            #DCTI: This line probably runs both the embedder and the decoder.
-            #DCTI: It also probably runs the embedder on targets.
             source_encoded, source_encoded_length, target_embed, states, nvs_prediction = self.embed_and_encode(
                 source,
                 source_length,
                 target)
-            #DCTI: What the fuck is ?states? I looked at it, and still have no idea.
         target, alignment_head_attention = self.decoder.decode_seq(target_embed, states=states)
-        #DCTI: ^ This line runs the decoder on the batch before the final lin transform.
-        #CTI: I guess this is the part where I have to add some kind of extra function call to the decoder,
-        #CTI: which would run the model with full context?
         forward_output = dict()
 
         if alignment_head_attention is not None:
-            forward_output['attention'] = alignment_head_attention
+            forward_output[C.ATTENTION_NAME] = alignment_head_attention
 
         forward_output[C.LOGITS_NAME] = self.output_layer(target, None)
 

@@ -449,7 +449,6 @@ def add_training_data_args(params, required=False):
                         help='Tag indicating the end of prepended text. Prepended tokens before this tag (inclusive) '
                              'will be marked, and they will not be counted toward source length when calculating '
                              'maximum output length for beam search.')
-    #CTI: Desc.
     params.add_argument(C.TRAINING_ARG_ALIGNMENT_MATRIX, '-am',
                         type=regular_file(),
                         help='Alignments for training examples (line-parallel with source and target files).')
@@ -823,7 +822,6 @@ def add_model_parameters(params):
                               default=None,
                               help='Decoder layer that is trained to align with alignment matrices. Higher number means'
                                    'closer to output.')
-    #CTI: Gotta make better doc.
 
 
 def add_batch_args(params, default_batch_size=4096, default_batch_type=C.BATCH_TYPE_WORD):

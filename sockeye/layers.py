@@ -386,7 +386,8 @@ class MultiHeadAttentionBase(pt.nn.Module):
         :param key_values: Keys/Values. Shape: (keys_values_length, batch_size, depth * 2).
         :param mask: Optional boolean attention mask. See DotAttentionCell for shape requirements.
         :return: Context vectors. Shape: (batch_size, query_max_length, output_depth).
-        Also optionally returns attention probabilities.
+                 Optionally returns attention probabilities.
+                 Shape: (batch_size * head count, queries_length, keys_vlaues_length)
         """
         #CTI: Gotta figure out what shape exactly and what exactly and update docstring.
 
@@ -679,7 +680,6 @@ class MultiHeadAttention(MultiHeadAttentionBase):
                 key_values: pt.Tensor,
                 mask: Optional[pt.Tensor] = None,
                 projected_memory_kv: Optional[pt.Tensor] = None) -> Tuple[pt.Tensor, pt.Tensor]:  # mypy: ignore
-        #CTI: Gotta update return type, gotta update doc.
         """
         Computes multi-head attention for queries given a memory tensor.
         If sequence lengths are provided, they will be used to mask the attention scores.
@@ -729,7 +729,14 @@ class MultiHeadAttention(MultiHeadAttentionBase):
         else:  # during inference multi-head attention with interleaved key-value parameters is used
             queries = self.ff_q(queries)
             key_values = projected_memory_kv if projected_memory_kv is not None else self.ff_kv(key_values)
-            return self._attend(queries=queries, key_values=key_values, mask=mask)
+            contexts, attention = self._attend(queries=queries, key_values=key_values, mask=mask)
+            if self.return_attention:
+                batch = key_values.size(1)
+                source_length = key_values.size(0)
+                alignment_head_attention = attention.reshape([batch, -1, 1, source_length])[:, 0]
+            else:
+                alignment_head_attention = None
+            return contexts, alignment_head_attention
 
 
 def interleave_kv(module: pt.nn.Module):

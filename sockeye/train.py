@@ -289,18 +289,19 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
     validation_targets = [args.validation_target] + args.validation_target_factors
     validation_targets = [str(os.path.abspath(target)) for target in validation_targets]
 
-    #NOTE TO INGUS - it might be coshier to modify this warning thing.
     if utils.is_distributed():
         error_msg = 'Distributed training requires prepared training data. Use `python -m sockeye.prepare_data` and ' \
                     'specify with %s' % C.TRAINING_ARG_PREPARED_DATA
         check_condition(args.prepared_data is not None, error_msg)
-    either_raw_or_prepared_error_msg = "Either specify a raw training corpus with %s and %s or a preprocessed corpus " \
-                                       "with %s." % (C.TRAINING_ARG_SOURCE,
-                                                     C.TRAINING_ARG_TARGET,
-                                                     C.TRAINING_ARG_PREPARED_DATA)
+    either_raw_or_prepared_error_msg = "Either specify a raw training corpus with %s and %s and optional %s or a " \
+                                       "preprocessed corpus with %s." % \
+                                       (C.TRAINING_ARG_SOURCE,
+                                        C.TRAINING_ARG_TARGET,
+                                        C.TRAINING_ARG_ALIGNMENT_MATRIX,
+                                        C.TRAINING_ARG_PREPARED_DATA)
     if args.prepared_data is not None:
-        # NOTE TO INGUS - It's probably coshier to modify this condition for warning.
-        utils.check_condition(args.source is None and args.target is None, either_raw_or_prepared_error_msg)
+        utils.check_condition(args.source is None and args.target is None and args.alignment_matrix is None,
+                              either_raw_or_prepared_error_msg)
         if not resume_training:
             utils.check_condition(args.source_vocab is None and args.target_vocab is None,
                                   "You are using a prepared data folder, which is tied to a vocabulary. "

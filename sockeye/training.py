@@ -76,7 +76,6 @@ class ModelWithLoss(torch.nn.Module):
                                                           List[torch.Tensor],
                                                           List[torch.Tensor]]:
         model_outputs = self.model(source, source_length, target, target_length)
-        #DCTI: This line here calculates model outputs for batch later used for calculating losses.
         if utils.using_deepspeed():
             # Guarantee model outputs are float32 before computing losses.
             # Computing losses in DeepSpeed float16 mode can lead to overflow.
@@ -273,8 +272,6 @@ class EarlyStoppingTrainer:
                     self._create_checkpoint(checkpoint_decoder, time_cost, train_iter, validation_iter)
                 break
 
-            #DCTI: This here thingy does a training step, I guess.
-            #DCTI: Probably including the gradient updates and everything.
             did_grad_step = self._step(batch=train_iter.next())
             checkpoint_up_to_date = checkpoint_up_to_date and not did_grad_step
 
@@ -361,7 +358,6 @@ class EarlyStoppingTrainer:
         batch = batch.load(device=self.device)
         with torch.cuda.amp.autocast(cache_enabled=False) if self.using_amp else utils.no_context():  # type: ignore
             # Forward + loss
-            #DCTI: This here line calculates the losses.
             sum_losses, loss_values, num_samples = self.model_object(batch.source, batch.source_length,
                                                                      batch.target, batch.target_length, batch.labels)
         # Backward
