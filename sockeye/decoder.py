@@ -256,15 +256,16 @@ class TransformerDecoder(Decoder):
         states += dummy_autoregr_states
         return states
 
-    def decode_seq(self, inputs: pt.Tensor, states: List[pt.Tensor]) -> Tuple[pt.Tensor, pt.Tensor]:
+    def decode_seq(self, inputs: pt.Tensor, states: List[pt.Tensor]) -> Tuple[pt.Tensor, Optional[pt.Tensor]]:
         """
         Decodes a sequence of embedded target words and returns sequence of last decoder
         representations for each time step.
 
         :param inputs: Encoded source: (batch_size, source_encoded_max_length, encoder_depth).
         :param states: List of initial states, as given by init_state_from_encoder().
-        :return: Decoder output. Shape: (batch_size, target_embed_max_length, decoder_depth). Optionally also returns
-        alignment head attentions.
+        :return: Decoder output. Shape: (batch_size, target_embed_max_length, decoder_depth).
+                 Optionally also returns alignment head attentions.
+                 Shape: (batch_size, target_embed_max_length, source_encoded_max_length).
         """
         outputs, _, alignment_head_attention = self.forward(inputs, states)
         return outputs, alignment_head_attention
