@@ -747,16 +747,17 @@ class GreedySearch(Search):
             target_prefix_factor_masks, target_prefix_factor_length = utils.gen_prefix_masking(
                 target_prefix_factors, self.output_factor_vocab_size, self.dtype)
 
+        cat_attentions = pt.zeros([batch_size, 0, source_length.max()], device=self.device)
         t = 1
         for t in range(1, max_iterations + 1):
             target_prefix_factor_mask = target_prefix_factor_masks[:, t-1] \
                                         if target_prefix_factor_masks is not None and t <= target_prefix_factor_length \
                                         else None
-            scores, model_states, target_factors, _ = self._inference.decode_step(best_word_index,
-                                                                               model_states,
-                                                                               vocab_slice_ids,
-                                                                               target_prefix_factor_mask,
-                                                                               self.output_factor_vocab_size)
+            scores, model_states, target_factors, alignment_head_attentions = self._inference.decode_step(best_word_index,
+                                                                                                          model_states,
+                                                                                                          vocab_slice_ids,
+                                                                                                          target_prefix_factor_mask,
+                                                                                                          self.output_factor_vocab_size)
             if prefix_masks is not None and t <= prefix_masks_length:
                 # Make sure search selects the current prefix token
                 scores += prefix_masks[:, t-1]
@@ -768,6 +769,11 @@ class GreedySearch(Search):
             _best_word_index = best_word_index[:, 0]
             if _best_word_index == self.eos_id or _best_word_index == C.PAD_ID:
                 break
+
+            if alignment_head_attentions.numel() != 0:
+                cat_attentions = pt.cat([cat_attentions, alignment_head_attentions], dim=1)
+            else:
+                cat_attentions = None
 
         logger.debug("Finished after %d out of %d steps.", t, max_iterations)
 
@@ -782,7 +788,8 @@ class GreedySearch(Search):
                             best_word_indices=stacked_outputs,
                             accumulated_scores=scores,
                             lengths=length,
-                            estimated_reference_lengths=None)  # type: ignore
+                            estimated_reference_lengths=None,
+                            alignment_head_attentions=cat_attentions)  # type: ignore
 
 
 class GreedyTop1(pt.nn.Module):
