@@ -300,7 +300,7 @@ class SockeyeModel(pt.nn.Module):
                     step_input: pt.Tensor,
                     states: List[pt.Tensor],
                     vocab_slice_ids: Optional[pt.Tensor] = None) -> Tuple[pt.Tensor, pt.Tensor, List[pt.Tensor],
-                                                                          List[pt.Tensor], Optional[pt.Tensor]]:
+                                                                          List[pt.Tensor], pt.Tensor]:
         """
         One step decoding of the translation model.
 
@@ -637,7 +637,7 @@ class _DecodeStep(pt.nn.Module):
     End-to-end traceable. Return values are put into a flat list to avoid return type constraints
     for traced modules.
 
-    IP: I'm not sure what constraints the second sentence is talking about. I think jit tracing still works.
+    IP: I'm not sure what constraints the last sentence is talking about. I think jit tracing still works.
     """
 
     def __init__(self,

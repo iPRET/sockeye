@@ -1524,7 +1524,8 @@ def parse_alignment_matrix_indices(line: str) -> List[Tuple[int, int]]:
     index_pairs = [(indexes[i], indexes[i + 1]) for i in range(0, len(indexes), 2)]
     return index_pairs
 
-def slice_csr_tensor(tens, start, end):
+
+def slice_csr_tensor(tens: torch.Tensor, start: int, end: int) -> torch.Tensor:
     """
     Function slices CSR tensor along dense (the row dimension, i.e. shape[0]) dimension.
     Runtime is proportional to amount of non-zero values in result slice.
@@ -1549,6 +1550,7 @@ def slice_csr_tensor(tens, start, end):
     result = torch.sparse_csr_tensor(result_crow_indices, result_col_indices, result_values, size=result_size,
                                      dtype=tens.dtype)
     return result
+
 
 class ParallelDataSet:
     """
