@@ -161,7 +161,7 @@ def test_nonparallel_iter(source_iterables, target_iterables):
     with pytest.raises(SockeyeError) as e:
         list(data_io.parallel_iter(source_iterables, target_iterables))
     assert str(e.value) == ("Different number of lines in source(s) or target(s) or"
-                            " alignment matrices (if specified) iterables.")
+                            " alignment matrix (if specified) iterables.")
 
 
 @pytest.mark.parametrize("source_iterables, target_iterables",

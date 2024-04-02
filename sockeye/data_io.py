@@ -21,6 +21,7 @@ import multiprocessing.pool
 import os
 import pickle
 import random
+import re
 from abc import abstractmethod
 from collections import OrderedDict
 from contextlib import ExitStack
@@ -433,9 +434,10 @@ def get_prepended_token_length(ids: List[int], eop_id: int) -> int:
         # the end-of-prepending tag is not in the token list
         return 0
 
-def create_alignment_matrix(indexes: List[Tuple[int, int]], size: Tuple[int, int]):
+
+def create_alignment_matrix(indexes: List[Tuple[int, int]], size: Tuple[int, int]) -> torch.Tensor:
     """
-    Creates a sparse alignment matrix from a list of indexes.
+    Creates a sparse alignment matrix tensor from a list of indexes.
 
     :param indexes: List of alignment indexes. In each tuple, the first number is the source token index and the
                     second number is the target token index.
@@ -455,11 +457,11 @@ def create_alignment_matrix(indexes: List[Tuple[int, int]], size: Tuple[int, int
     for _, target_idx in indexes:
         values.append(normalized_values[target_idx])
 
-    #Format indexes.
+    # Format indexes.
     indexes = [(target_idx, source_idx) for source_idx, target_idx in indexes]
     indexes = torch.tensor(indexes).t().long()
     if indexes.numel() == 0:
-        #This is necessary beacuse torch fails to handle the empty case.
+        # This is necessary beacuse torch fails to handle the empty case.
         indexes = torch.zeros([2, 0]).long()
 
     coo_tensor = torch.sparse_coo_tensor(indexes, values, (size[1], size[0]))
@@ -468,6 +470,7 @@ def create_alignment_matrix(indexes: List[Tuple[int, int]], size: Tuple[int, int
     coo_tensor = tensor.to_sparse_coo()
 
     return coo_tensor
+
 
 class RawParallelDatasetLoader:
     """
@@ -593,7 +596,7 @@ class RawParallelDatasetLoader:
                 size = self.buckets[idx]
                 unstacked = [create_alignment_matrix(indexes, size) for indexes in bucket]
                 if len(unstacked) == 0:
-                    stacked = C.NONE_TENSOR
+                    stacked = torch.zeros(0)
                 else:
                     stacked = torch.cat(unstacked, dim=0)
                     stacked = stacked.to_sparse_csr()
@@ -1508,7 +1511,6 @@ def get_target_bucket(buckets: List[Tuple[int, int]],
             break
     return bucket_idx, bucket
 
-import re
 def parse_alignment_matrix_indices(line: str) -> List[Tuple[int, int]]:
     """
     Turns string representing alignments into a list of tuples (source index, target index).
@@ -2299,6 +2301,6 @@ def create_batch_from_parallel_sample(source: torch.Tensor,
 
     alignment_matrix = alignment_matrix if alignment_matrix is not None else C.NONE_TENSOR
 
-    labels['alignment_matrix_label'] = alignment_matrix
+    labels[C.ALIGNMENT_MATRIX_LABEL] = alignment_matrix
 
     return Batch(source, source_length, target, target_length, labels, samples, tokens)

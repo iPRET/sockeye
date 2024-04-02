@@ -12,6 +12,7 @@
 # permissions and limitations under the License.
 
 import logging
+import math
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
@@ -573,7 +574,6 @@ class MultiHeadSelfAttention(MultiHeadAttentionBase, AutoregressiveLayer):
             c, _ = self._attend(queries=queries, key_values=states, mask=mask)
             return c, states
 
-import math
 def single_head_attention(query: pt.Tensor,
                           key: pt.Tensor,
                           q_proj_weight: pt.Tensor,
