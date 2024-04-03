@@ -699,7 +699,6 @@ class MultiHeadAttention(MultiHeadAttentionBase):
         if self.training:  # use fused multi-head attention op during training
             assert not self.kv_interleaved
             assert projected_memory_kv is None, "caching not supported in training"
-            alignment_head_attention = None
             contexts, _ = F.multi_head_attention_forward(query=queries, key=key_values, value=key_values,
                                                          embed_dim_to_check=self.depth, num_heads=self.heads,
                                                          in_proj_weight=None,
@@ -718,13 +717,14 @@ class MultiHeadAttention(MultiHeadAttentionBase):
                                                          k_proj_weight=self.ff_kv.weight[:self.depth, :],
                                                          v_proj_weight=self.ff_kv.weight[self.depth:, :])
 
+            alignment_head_attention = None
             if self.return_attention:
-                roi = self.ff_kv.weight.shape[1] // self.heads
+                one_head = self.ff_kv.weight.shape[1] // self.heads
                 alignment_head_attention = single_head_attention(query=queries,
                                                                  key=key_values,
                                                                  attn_mask=mask[0] if mask is not None else None,
-                                                                 q_proj_weight=self.ff_q.weight[:roi, :],
-                                                                 k_proj_weight=self.ff_kv.weight[:self.depth, :][:roi])
+                                                                 q_proj_weight=self.ff_q.weight[:one_head, :],
+                                                                 k_proj_weight=self.ff_kv.weight[:self.depth, :][:one_head])
 
             if alignment_head_attention is None:
                 alignment_head_attention = pt.zeros(0)

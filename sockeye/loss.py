@@ -407,6 +407,7 @@ class AlignmentMatrixKLDivergenceLoss(Loss):
                  output_name: str = C.ATTENTION_NAME,
                  label_name: str = C.ALIGNMENT_MATRIX_LABEL) -> None:
         super().__init__(name=name, output_name=output_name, label_name=label_name, weight=weight)
+
     def forward(self, alignment_head_attention: pt.Tensor, alignment_matrix: pt.Tensor) -> Tuple[pt.Tensor, pt.Tensor]:
         """
         Returns the loss.

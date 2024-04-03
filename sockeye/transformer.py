@@ -42,7 +42,6 @@ class TransformerConfig(config.Config):
     use_lhuc: bool = False
     depth_key_value: int = 0
     use_glu: bool = False
-    return_attention: bool = False
     attention_alignment_layer: int = 0
 
 
@@ -139,7 +138,6 @@ class TransformerDecoderBlock(pt.nn.Module):
         super().__init__()
         self.decoder_type = config.decoder_type
         self.inference_only = inference_only
-        self.return_attention = return_attention
 
         self.autoregr_layer = None
         if self.decoder_type == C.TRANSFORMER_TYPE:

@@ -902,6 +902,13 @@ def add_training_args(params):
                               help='Number of fully-connected layers for predicting the length ratio. '
                                    'Default %(default)s.')
 
+    train_params.add_argument('--alignment-matrix-weight',
+                              type=float_greater_or_equal(0.0),
+                              default=1.0,
+                              help='Weight for KL divergence loss between alignment matrices and alignment head '
+                                   'attentions. Relevant if you pass --alignment-matrix for training or have '
+                                   'use prepared data containing alignment matrices. Default %(default)s.')
+
     add_nvs_train_parameters(train_params)
 
     train_params.add_argument('--target-factors-weight',

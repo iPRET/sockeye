@@ -500,8 +500,7 @@ def create_decoder_config(args: argparse.Namespace,
                           encoder_num_hidden: int,
                           max_seq_len_source: int,
                           max_seq_len_target: int,
-                          num_embed_target: int,
-                          return_attention: bool) -> transformer.TransformerConfig:
+                          num_embed_target: int) -> transformer.TransformerConfig:
     """
     Create the config for the decoder.
 
@@ -510,7 +509,6 @@ def create_decoder_config(args: argparse.Namespace,
     :param max_seq_len_source: Maximum source sequence length.
     :param max_seq_len_target: Maximum target sequence length.
     :param num_embed_target: The size of the target embedding.
-    :param return_attention: Bool flag for whether decoder has to return alignment head attentions.
     :return: The config for the decoder.
     """
     _, decoder_num_layers = args.num_layers
@@ -566,8 +564,7 @@ def create_decoder_config(args: argparse.Namespace,
         depth_key_value=encoder_num_hidden,
         decoder_type=args.decoder,
         use_glu=args.transformer_feed_forward_use_glu,
-        attention_alignment_layer=attention_alignment_layer,
-        return_attention=return_attention)
+        attention_alignment_layer=attention_alignment_layer)
 
     return config_decoder
 
@@ -663,13 +660,9 @@ def create_model_config(args: argparse.Namespace,
 
     config_encoder, encoder_num_hidden = create_encoder_config(args, max_seq_len_source, max_seq_len_target,
                                                                num_embed_source)
-    if args.alignment_matrix is not None:
-        return_attention = True
-    else:
-        return_attention = False
 
     config_decoder = create_decoder_config(args, encoder_num_hidden, max_seq_len_source, max_seq_len_target,
-                                           num_embed_target, return_attention=return_attention)
+                                           num_embed_target)
 
     source_factor_configs = None
     if len(source_vocab_sizes) > 1:
@@ -748,8 +741,7 @@ def create_model_config(args: argparse.Namespace,
                                      neural_vocab_selection=args.neural_vocab_selection,
                                      neural_vocab_selection_block_loss=args.neural_vocab_selection_block_loss,
                                      lhuc=args.lhuc is not None,
-                                     dtype=C.DTYPE_FP32,
-                                     return_attention=return_attention)
+                                     dtype=C.DTYPE_FP32)
     return model_config
 
 
@@ -806,8 +798,9 @@ def create_losses(args: argparse.Namespace, all_num_classes: List[int]) -> List[
         losses.append(bow_loss)
 
     if args.alignment_matrix:
-        kldiv = loss.AlignmentMatrixKLDivergenceLoss()
-        losses.append(kldiv)
+        weight = args.alignment_matrix_weight
+        kldiv_loss = loss.AlignmentMatrixKLDivergenceLoss(weight=weight)
+        losses.append(kldiv_loss)
 
     return losses
 

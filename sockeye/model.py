@@ -68,7 +68,6 @@ class ModelConfig(Config):
     :param neural_vocab_selection: When True the model contains a neural vocab selection model that restricts
                                    the target output vocabulary to speed up inference.
     :param neural_vocab_selection_block_loss: When true the gradients of the NVS models are blocked before the encoder.
-    :param return_attention: Whether model has to return the alignment head's attentions.
     """
     config_data: data_io.DataConfig
     vocab_source_size: int
@@ -83,7 +82,6 @@ class ModelConfig(Config):
     dtype: str = C.DTYPE_FP32
     neural_vocab_selection: Optional[str] = None
     neural_vocab_selection_block_loss: bool = False
-    return_attention: bool = False
 
 
 class SockeyeModel(pt.nn.Module):
@@ -109,8 +107,7 @@ class SockeyeModel(pt.nn.Module):
                  inference_only: bool = False,
                  clamp_to_dtype: bool = False,
                  train_decoder_only: bool = False,
-                 forward_pass_cache_size: int = 0,
-                 return_attention: bool = False) -> None:
+                 forward_pass_cache_size: int = 0) -> None:
         super().__init__()
         self.config = copy.deepcopy(config)
         self.dtype = utils.get_torch_dtype(config.dtype)
