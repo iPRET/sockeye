@@ -454,6 +454,7 @@ def make_input_from_factored_string(sentence_id: SentenceId,
 
     return TranslatorInput(sentence_id=sentence_id, tokens=tokens, factors=factors)
 
+
 def make_input_from_multiple_strings(sentence_id: SentenceId, strings: List[str]) -> TranslatorInput:
     """
     Returns a TranslatorInput object from multiple strings, where the first element corresponds to the surface tokens
@@ -637,6 +638,7 @@ def _reduce_nbest_translations(nbest_translations_list: List[Translation]) -> Tr
     scores = [translation.scores for translation in nbest_translations_list]
 
     nbest_translations = NBestTranslations(sequences, scores)
+
     return Translation(best_translation.target_ids,
                        best_translation.scores,
                        nbest_translations,
@@ -1107,6 +1109,7 @@ class Translator:
         target_prefix_factors = utils.shift_prefix_factors(target_prefix_factors) \
             if target_prefix_factors is not None and \
                C.TARGET_FACTOR_SHIFT else target_prefix_factors
+
         return source, source_length, restrict_lexicon, max_out_lengths, target_prefix, target_prefix_factors
 
     def _get_translation_tokens_and_factors(self, target_ids: List[List[int]]) -> Tuple[List[str],

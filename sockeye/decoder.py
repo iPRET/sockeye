@@ -282,6 +282,7 @@ class TransformerDecoder(Decoder):
                 target_mask = self.autoregressive_mask(step_input)  # mask: (length, length)
             steps, source_encoded, source_mask, *autoregr_states = states
             enc_att_kv = [None for _ in range(self.config.num_layers)]
+
         if any(layer.num_state_tensors > 1 for layer in self.layers):
             # separates autoregressive states by layer
             states_iter = iter(autoregr_states)

@@ -765,6 +765,7 @@ def prepare_data(source_fnames: List[str],
                                            pad_id=C.PAD_ID,
                                            eop_id=eop_id)
 
+
     # Process shards in parallel
     args = ((shard_idx, data_loader, shard_sources, shard_targets, source_vocabs, target_vocabs,
              length_statistics.length_ratio_mean, length_statistics.length_ratio_std, buckets, output_prefix,
@@ -862,6 +863,7 @@ def get_data_statistics(source_readers: Optional[Sequence[Iterable]],
 
     return data_stats_accumulator.statistics
 
+
 def get_validation_data_iter(data_loader: RawParallelDatasetLoader,
                              validation_sources: List[str],
                              validation_targets: List[str],
@@ -921,9 +923,7 @@ def get_prepared_data_iters(prepared_data_dir: str,
                             batch_sentences_multiple_of: int = 1,
                             permute: bool = True) -> Tuple['BaseParallelSampleIter',
                                                            'BaseParallelSampleIter',
-                                                           'DataConfig',
-                                                           List[vocab.Vocab],
-                                                           List[vocab.Vocab]]:
+                                                           'DataConfig', List[vocab.Vocab], List[vocab.Vocab]]:
     logger.info("===============================")
     logger.info("Creating training data iterator")
     logger.info("===============================")
@@ -991,14 +991,20 @@ def get_prepared_data_iters(prepared_data_dir: str,
 
     # Don't shuffle validation data. Different orders can cause different
     # evaluation results.
-    validation_iter = get_validation_data_iter(data_loader=data_loader, validation_sources=validation_sources,
-                                               validation_targets=validation_targets, buckets=buckets,
-                                               bucket_batch_sizes=bucket_batch_sizes, source_vocabs=source_vocabs,
-                                               target_vocabs=target_vocabs, max_seq_len_source=max_seq_len_source,
-                                               max_seq_len_target=max_seq_len_target, batch_size=batch_size,
+    validation_iter = get_validation_data_iter(data_loader=data_loader,
+                                               validation_sources=validation_sources,
+                                               validation_targets=validation_targets,
+                                               buckets=buckets,
+                                               bucket_batch_sizes=bucket_batch_sizes,
+                                               source_vocabs=source_vocabs,
+                                               target_vocabs=target_vocabs,
+                                               max_seq_len_source=max_seq_len_source,
+                                               max_seq_len_target=max_seq_len_target,
+                                               batch_size=batch_size,
                                                permute=False)
 
     return train_iter, validation_iter, config_data, source_vocabs, target_vocabs
+
 
 def get_training_data_iters(sources: List[str],
                             targets: List[str],
@@ -1121,11 +1127,16 @@ def get_training_data_iters(sources: List[str],
 
     # Don't shuffle validation data. Different orders can cause different
     # evaluation results.
-    validation_iter = get_validation_data_iter(data_loader=data_loader, validation_sources=validation_sources,
-                                               validation_targets=validation_targets, buckets=buckets,
-                                               bucket_batch_sizes=bucket_batch_sizes, source_vocabs=source_vocabs,
-                                               target_vocabs=target_vocabs, max_seq_len_source=max_seq_len_source,
-                                               max_seq_len_target=max_seq_len_target, batch_size=batch_size,
+    validation_iter = get_validation_data_iter(data_loader=data_loader,
+                                               validation_sources=validation_sources,
+                                               validation_targets=validation_targets,
+                                               buckets=buckets,
+                                               bucket_batch_sizes=bucket_batch_sizes,
+                                               source_vocabs=source_vocabs,
+                                               target_vocabs=target_vocabs,
+                                               max_seq_len_source=max_seq_len_source,
+                                               max_seq_len_target=max_seq_len_target,
+                                               batch_size=batch_size,
                                                permute=False)
 
     return train_iter, validation_iter, config_data, data_info
@@ -1169,11 +1180,16 @@ def get_scoring_data_iters(sources: List[str],
                                            skip_blanks=False)
 
     # ...one iterator to traverse them all,
-    scoring_iter = BatchedRawParallelSampleIter(data_loader=data_loader, sources=sources, targets=targets,
-                                                source_vocabs=source_vocabs, target_vocabs=target_vocabs, bucket=bucket,
+    scoring_iter = BatchedRawParallelSampleIter(data_loader=data_loader,
+                                                sources=sources,
+                                                targets=targets,
+                                                source_vocabs=source_vocabs,
+                                                target_vocabs=target_vocabs,
+                                                bucket=bucket,
                                                 batch_size=batch_size,
                                                 max_lens=(max_seq_len_source, max_seq_len_target),
-                                                num_source_factors=len(sources), num_target_factors=len(targets))
+                                                num_source_factors=len(sources),
+                                                num_target_factors=len(targets))
 
     # and with the model appraise them.
     return scoring_iter
@@ -1405,6 +1421,7 @@ def create_sequence_readers(sources: List[str], targets: List[str],
     target_sequence_readers = [SequenceReader(target, vocab, add_bos=True) for target, vocab in
                                 zip(targets, vocab_targets)]
     return source_sequence_readers, target_sequence_readers
+
 
 def parallel_iter(source_iterables: Sequence[Iterable[Optional[Any]]],
                   target_iterables: Sequence[Iterable[Optional[Any]]],
@@ -2106,6 +2123,7 @@ class ShardedParallelSampleIter(BaseParallelSampleIter):
         self._load_shard()
         self.shard_iter.load_state(fname + ".sharditer")
 
+
 class ParallelSampleIter(BaseParallelSampleIter):
     """
     Data iterator on a bucketed ParallelDataSet. Shuffles data at every reset and supports saving and loading the
@@ -2248,6 +2266,7 @@ class Batch:
     labels: Dict[str, torch.Tensor]
     samples: int
     tokens: int
+
     def load(self, device: torch.device) -> 'Batch':
         source = self.source.to(device)
         source_length = self.source_length.to(device)

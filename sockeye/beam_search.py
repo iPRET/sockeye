@@ -908,6 +908,7 @@ class BeamSearch(Search):
         # best word_indices (also act as input: (batch*beam, num_target_factors
         best_word_indices = pt.full((batch_size * self.beam_size, self.num_target_factors),
                                     fill_value=self.bos_id, device=self.device, dtype=pt.int32)
+
         # offset for hypothesis indices in batch decoding
         offset = pt.arange(0, batch_size * self.beam_size, self.beam_size,
                            dtype=pt.int32, device=self.device).repeat_interleave(self.beam_size)
@@ -1066,6 +1067,7 @@ class BeamSearch(Search):
             best_word_indices, finished, \
             (scores_accumulated, *factor_scores_accumulated), \
             lengths, estimated_reference_lengths = self._traced_sort_norm_and_update_finished(*_sort_inputs)
+
             # Collect best hypotheses, best word indices
             best_word_indices_list.append(best_word_indices)
             best_hyp_indices_list.append(best_hyp_indices)

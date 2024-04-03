@@ -341,7 +341,9 @@ class SockeyeModel(pt.nn.Module):
                 source,
                 source_length,
                 target)
+
         target, alignment_head_attention = self.decoder.decode_seq(target_embed, states=states)
+
         forward_output = dict()
 
         if alignment_head_attention is not None:

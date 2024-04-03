@@ -166,10 +166,16 @@ class DecoderStateGenerator:
                "You should call probe_token_count first to initialize the store files."
 
         # get data iter
-        data_iter = data_io.get_scoring_data_iters(sources=sources, targets=targets, source_vocabs=self.source_vocabs,
-                                                   target_vocabs=self.target_vocabs, batch_size=batch_size,
-                                                   max_seq_len_source=self.max_seq_len_source,
-                                                   max_seq_len_target=self.max_seq_len_target, eop_id=eop_id)
+        data_iter = data_io.get_scoring_data_iters(
+            sources=sources,
+            targets=targets,
+            source_vocabs=self.source_vocabs,
+            target_vocabs=self.target_vocabs,
+            batch_size=batch_size,
+            max_seq_len_source=self.max_seq_len_source,
+            max_seq_len_target=self.max_seq_len_target,
+            eop_id=eop_id
+        )
 
         with pt.inference_mode():
             for batch_no, batch in enumerate(data_iter, 1):

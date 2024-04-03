@@ -307,9 +307,13 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
                                   "You are using a prepared data folder, which is tied to a vocabulary. "
                                   "To change it you need to rerun data preparation with a different vocabulary.")
         train_iter, validation_iter, data_config, source_vocabs, target_vocabs = data_io.get_prepared_data_iters(
-            prepared_data_dir=args.prepared_data, validation_sources=validation_sources,
-            validation_targets=validation_targets, shared_vocab=shared_vocab, batch_size=args.batch_size,
-            batch_type=args.batch_type, batch_sentences_multiple_of=args.batch_sentences_multiple_of)
+            prepared_data_dir=args.prepared_data,
+            validation_sources=validation_sources,
+            validation_targets=validation_targets,
+            shared_vocab=shared_vocab,
+            batch_size=args.batch_size,
+            batch_type=args.batch_type,
+            batch_sentences_multiple_of=args.batch_sentences_multiple_of)
 
         # Check arguments used for blocking cross-attention between decoder and encoded prepended tokens
         if args.transformer_block_prepended_cross_attention:
@@ -418,25 +422,26 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
                         'Training and validation data must have the same number of target factors, '
                         'but found %d and %d.' % (len(source_vocabs), len(validation_sources)))
 
-        train_iter, validation_iter, config_data, data_info = data_io.get_training_data_iters(sources=sources,
-                                                                                              targets=targets,
-                                                                                              validation_sources=validation_sources,
-                                                                                              validation_targets=validation_targets,
-                                                                                              source_vocabs=source_vocabs,
-                                                                                              target_vocabs=target_vocabs,
-                                                                                              source_vocab_paths=source_vocab_paths,
-                                                                                              target_vocab_paths=target_vocab_paths,
-                                                                                              shared_vocab=shared_vocab,
-                                                                                              batch_size=args.batch_size,
-                                                                                              batch_type=args.batch_type,
-                                                                                              max_seq_len_source=max_seq_len_source,
-                                                                                              max_seq_len_target=max_seq_len_target,
-                                                                                              bucketing=not args.no_bucketing,
-                                                                                              bucket_width=args.bucket_width,
-                                                                                              bucket_scaling=args.bucket_scaling,
-                                                                                              end_of_prepending_tag=args.end_of_prepending_tag,
-                                                                                              batch_sentences_multiple_of=args.batch_sentences_multiple_of,
-                                                                                              alignment_matrix=alignment_matrix)
+        train_iter, validation_iter, config_data, data_info = data_io.get_training_data_iters(
+            sources=sources,
+            targets=targets,
+            validation_sources=validation_sources,
+            validation_targets=validation_targets,
+            source_vocabs=source_vocabs,
+            target_vocabs=target_vocabs,
+            source_vocab_paths=source_vocab_paths,
+            target_vocab_paths=target_vocab_paths,
+            shared_vocab=shared_vocab,
+            batch_size=args.batch_size,
+            batch_type=args.batch_type,
+            max_seq_len_source=max_seq_len_source,
+            max_seq_len_target=max_seq_len_target,
+            bucketing=not args.no_bucketing,
+            bucket_width=args.bucket_width,
+            bucket_scaling=args.bucket_scaling,
+            end_of_prepending_tag=args.end_of_prepending_tag,
+            batch_sentences_multiple_of=args.batch_sentences_multiple_of,
+            alignment_matrix=alignment_matrix)
 
         data_info_fname = os.path.join(output_folder, C.DATA_INFO)
         logger.info("Writing data config to '%s'", data_info_fname)
@@ -660,7 +665,6 @@ def create_model_config(args: argparse.Namespace,
 
     config_encoder, encoder_num_hidden = create_encoder_config(args, max_seq_len_source, max_seq_len_target,
                                                                num_embed_source)
-
     config_decoder = create_decoder_config(args, encoder_num_hidden, max_seq_len_source, max_seq_len_target,
                                            num_embed_target)
 
@@ -979,6 +983,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
     :param checkpoint_callback: An optional callback function (int -> None). The function will be called
                                 each time a checkpoint has been reached
     """
+
     # When running distributed training, initializing the process group is a
     # prerequisite for all inter-process communication.
 

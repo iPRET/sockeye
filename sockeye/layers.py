@@ -713,7 +713,6 @@ class MultiHeadAttention(MultiHeadAttentionBase):
                                                          training=self.training,
                                                          key_padding_mask=None,
                                                          need_weights=False,
-                                                         average_attn_weights=False,
                                                          attn_mask=mask,
                                                          use_separate_proj_weight=True,
                                                          q_proj_weight=self.ff_q.weight,

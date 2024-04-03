@@ -405,7 +405,7 @@ def adjust_first_step_masking(target_prefix: pt.Tensor, first_step_mask: pt.Tens
                      [1 1 0]                       [inf inf 0]
                      [1 1 0]                       [inf inf 0]
     """
-    batch_beam, _ = first_step_mask.size()
+    batch_beam, _  = first_step_mask.size()
     batch, max_prefix_len = target_prefix.size()
     beam_size = batch_beam // batch
     # Step 1
