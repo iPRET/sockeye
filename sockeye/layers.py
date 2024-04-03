@@ -531,7 +531,10 @@ class MultiHeadSelfAttention(MultiHeadAttentionBase, AutoregressiveLayer):
         # shape: (length, batch, key_depth + value_depth)
         return 0, batch_size, self.depth_out * 2
 
-    def forward(self, inputs: pt.Tensor, previous_states: Optional[pt.Tensor] = None, mask: Optional[pt.Tensor] = None, **args) -> Tuple[pt.Tensor, pt.Tensor]:  # type: ignore
+    def forward(self, inputs: pt.Tensor,
+                previous_states: Optional[pt.Tensor] = None,
+                mask: Optional[pt.Tensor] = None,
+                **args) -> Tuple[pt.Tensor, pt.Tensor]:  # type: ignore
         """
         Computes multi-head attention on a set of inputs, serving as queries, keys, and values.
         If sequence lengths are provided, they will be used to mask the attention scores.
@@ -720,11 +723,13 @@ class MultiHeadAttention(MultiHeadAttentionBase):
             alignment_head_attention = None
             if self.return_attention:
                 one_head = self.ff_kv.weight.shape[1] // self.heads
+                first_head_ff_q_w = self.ff_q.weight[:one_head, :]
+                first_head_ff_kw_w = self.ff_kv.weight[:self.depth, :][:one_head]
                 alignment_head_attention = single_head_attention(query=queries,
                                                                  key=key_values,
                                                                  attn_mask=mask[0] if mask is not None else None,
-                                                                 q_proj_weight=self.ff_q.weight[:one_head, :],
-                                                                 k_proj_weight=self.ff_kv.weight[:self.depth, :][:one_head])
+                                                                 q_proj_weight=first_head_ff_q_w,
+                                                                 k_proj_weight=first_head_ff_kw_w)
 
             if alignment_head_attention is None:
                 alignment_head_attention = pt.zeros(0)

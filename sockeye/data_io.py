@@ -357,7 +357,8 @@ def create_shards(source_fnames: List[str],
                   target_fnames: List[str],
                   num_shards: int,
                   output_prefix: str,
-                  alignment_matrix_fname: Optional[str] = None) -> Tuple[List[Tuple[Tuple[str, ...], Tuple[str, ...], str]], bool]:
+                  alignment_matrix_fname: Optional[str] = None) -> \
+        Tuple[List[Tuple[Tuple[str, ...], Tuple[str, ...], str]], bool]:
     """
     Assign source/target sentence pairs to shards at random.
 
@@ -377,7 +378,8 @@ def create_shards(source_fnames: List[str],
                             for f in range(len(source_fnames))]
     targets_shard_fnames = [[os.path.join(output_prefix, C.SHARD_TARGET % i) + ".%d" % f for i in range(num_shards)]
                             for f in range(len(target_fnames))]
-    alignment_matrix_shard_fnames = [os.path.join(output_prefix, C.SHARD_ALIGNMENT_MATRIX % i) for i in range(num_shards)] \
+    alignment_matrix_shard_fnames = [os.path.join(output_prefix, C.SHARD_ALIGNMENT_MATRIX % i)
+                                     for i in range(num_shards)] \
         if alignment_matrix_fname is not None else []
 
     with ExitStack() as exit_stack:
@@ -546,7 +548,8 @@ class RawParallelDatasetLoader:
 
         # Bucket sentences as padded np arrays
         for sources, targets, alignment_matrix in parallel_iter(source_iterables, target_iterables,
-                                                                alignment_matrix_iterable, skip_blanks=self.skip_blanks):
+                                                                alignment_matrix_iterable,
+                                                                skip_blanks=self.skip_blanks):
             sources = [[] if stream is None else stream for stream in sources]
             targets = [[] if stream is None else stream for stream in targets]
             source_len = len(sources[0])
@@ -1586,7 +1589,8 @@ class ParallelDataSet:
         compatibility and is not recommended for general use.
         """
         if use_legacy_format:
-            check_condition(self.alignment_matrix is None, 'Cannot save data in legacy format when using alignment matrices')
+            check_condition(self.alignment_matrix is None, 'Cannot save data in legacy format when using '
+                                                           'alignment matrices')
             check_condition(self.prepended_source_length is None,
                             'Cannot save data in legacy format when specifying prepended tokens')
             torch.save(self.source + self.target, fname)
@@ -1928,7 +1932,8 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
 
         self.sources_iters = [iter(s) for s in self.sources_sentences]
         self.targets_iters = [iter(s) for s in self.targets_sentences]
-        self.alignment_matrix_iter = iter(self.alignment_matrix_iterator) if self.alignment_matrix_iterator is not None else None
+        self.alignment_matrix_iter = iter(self.alignment_matrix_iterator) \
+            if self.alignment_matrix_iterator is not None else None
 
         self.max_len_source, self.max_len_target = max_lens
         self.next_batch = None  # type: Optional[Batch]
@@ -1949,7 +1954,8 @@ class BatchedRawParallelSampleIter(BaseParallelSampleIter):
             else None  # type: Optional[List[List[Tuple[int, int]]]]
         num_read = 0
         for num_read, (sources, targets, alignment_matrix) in enumerate(
-                parallel_iterate(self.sources_iters, self.targets_iters, self.alignment_matrix_iter, skip_blanks=False), 1):
+                parallel_iterate(self.sources_iters, self.targets_iters, self.alignment_matrix_iter,
+                                 skip_blanks=False), 1):
             source_len = 0 if sources[0] is None else len(sources[0])
             target_len = 0 if targets[0] is None else len(targets[0])
             if source_len > self.max_len_source:

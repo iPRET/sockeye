@@ -299,7 +299,8 @@ class TransformerDecoder(Decoder):
 
         new_autoregr_states = []  # type: List[pt.Tensor]
         alignment_head_attention = pt.zeros(0)
-        for idx, (layer, layer_autoregr_state, layer_enc_att_kv) in enumerate(zip(self.layers, autoregr_states, enc_att_kv)):
+        for idx, (layer, layer_autoregr_state, layer_enc_att_kv) in enumerate(zip(self.layers, autoregr_states,
+                                                                                  enc_att_kv)):
             target, new_layer_autoregr_state, attention = layer(target=target,
                                                                 target_mask=target_mask,
                                                                 source=source_encoded,

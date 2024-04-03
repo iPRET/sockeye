@@ -85,7 +85,8 @@ class _SingleModelInference(_Inference):
                     vocab_slice_ids: Optional[pt.Tensor] = None,
                     target_prefix_factor_mask: Optional[pt.Tensor] = None,
                     factor_vocab_size: Optional[int] = None):
-        logits, knn_probs, states, target_factor_outputs, alignment_head_attention = self._model.decode_step(step_input, states, vocab_slice_ids)
+        logits, knn_probs, states, target_factor_outputs, alignment_head_attention = \
+            self._model.decode_step(step_input, states, vocab_slice_ids)
         if not self._skip_softmax:
             if knn_probs is None:  # no knn used
                 probs = pt.log_softmax(logits, dim=-1)
@@ -174,7 +175,8 @@ class _EnsembleInference(_Inference):
         for model, model_state_structure in zip(self._models, self.state_structure()):
             model_states = states[state_index:state_index+len(model_state_structure)]
             state_index += len(model_state_structure)
-            logits, knn_probs, model_states, target_factor_outputs, _ = model.decode_step(step_input, model_states, vocab_slice_ids)
+            (logits, knn_probs, model_states, target_factor_outputs, _) = \
+                model.decode_step(step_input, model_states, vocab_slice_ids)
             if knn_probs is None:
                 probs = logits.softmax(dim=-1)
             else:
@@ -753,11 +755,12 @@ class GreedySearch(Search):
             target_prefix_factor_mask = target_prefix_factor_masks[:, t-1] \
                                         if target_prefix_factor_masks is not None and t <= target_prefix_factor_length \
                                         else None
-            scores, model_states, target_factors, alignment_head_attentions = self._inference.decode_step(best_word_index,
-                                                                                                          model_states,
-                                                                                                          vocab_slice_ids,
-                                                                                                          target_prefix_factor_mask,
-                                                                                                          self.output_factor_vocab_size)
+            scores, model_states, target_factors, alignment_head_attentions = \
+                self._inference.decode_step(best_word_index,
+                                            model_states,
+                                            vocab_slice_ids,
+                                            target_prefix_factor_mask,
+                                            self.output_factor_vocab_size)
             if prefix_masks is not None and t <= prefix_masks_length:
                 # Make sure search selects the current prefix token
                 scores += prefix_masks[:, t-1]
@@ -990,7 +993,8 @@ class BeamSearch(Search):
                 target_prefix_factors, self.output_factor_vocab_size, self.dtype)
             target_prefix_factor_masks = target_prefix_factor_masks.unsqueeze(2).expand(-1, -1, self.beam_size, -1, -1)
 
-        #cat_attentions is supposed to track the alignment head attention matrices for the running best target hypotheses.
+        # cat_attentions is supposed to track the alignment head attention matrices for the running best target
+        # hypotheses.
         cat_attentions = pt.zeros([batch_size * self.beam_size, 0, source_length.max()], device=self.device)
 
         t = 1
@@ -1002,11 +1006,12 @@ class BeamSearch(Search):
             target_prefix_factor_mask = target_prefix_factor_masks[:, t-1] \
                                         if target_prefix_factor_masks is not None and t <= target_prefix_factor_length \
                                         else None
-            target_dists, model_states, target_factors, alignment_head_attention = self._inference.decode_step(best_word_indices,
-                                                                                                               model_states,
-                                                                                                               vocab_slice_ids,
-                                                                                                               target_prefix_factor_mask,
-                                                                                                               self.output_factor_vocab_size)
+            target_dists, model_states, target_factors, alignment_head_attention = \
+                self._inference.decode_step(best_word_indices,
+                                            model_states,
+                                            vocab_slice_ids,
+                                            target_prefix_factor_mask,
+                                            self.output_factor_vocab_size)
 
             # (2) Produces the accumulated cost of target words in each row.
             # There is special treatment for finished rows.
@@ -1038,7 +1043,6 @@ class BeamSearch(Search):
                 if batch_size > 1:
                     # Offsetting the indices to match the shape of the scores matrix
                     best_hyp_indices = best_hyp_indices + offset
-
 
             if alignment_head_attention.numel() != 0:
                 cat_attentions = pt.cat([cat_attentions, alignment_head_attention], dim=1)

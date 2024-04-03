@@ -419,11 +419,12 @@ class AlignmentMatrixKLDivergenceLoss(Loss):
         :return: Loss value over batch, and the number 1.
         """
         res_device = alignment_head_attention.device
-        #This is necessary because during evaluation we don't have alignment matrices.
+        # This is necessary because during evaluation we don't have alignment matrices.
         if alignment_matrix.numel() == 0:
             return pt.zeros(1, device=res_device), pt.ones(1, device=res_device)
 
-        loss = -(alignment_matrix * pt.log(alignment_head_attention + 1e-8)).sum(dim=2).sum(dim=1) / alignment_matrix.shape[1]
+        loss = -(alignment_matrix * pt.log(alignment_head_attention + 1e-8)).sum(dim=2).sum(dim=1)
+        loss = loss / alignment_matrix.shape[1]
         num_samples = pt.ones(1, device=res_device)
         loss = loss * self.weight
         loss = loss.mean()

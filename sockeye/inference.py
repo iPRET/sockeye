@@ -1223,7 +1223,8 @@ class Translator:
         best_hyp_indices = result.best_hyp_indices.cpu().numpy()
         best_word_indices = result.best_word_indices.cpu().numpy()
         result_accumulated_scores_cpu = result.accumulated_scores.cpu()
-        alignment_head_attention = result.alignment_head_attentions.cpu().numpy() if result.alignment_head_attentions is not None else None
+        alignment_head_attention = result.alignment_head_attentions.cpu().numpy() \
+            if result.alignment_head_attentions is not None else None
         if self.dtype == pt.bfloat16:
             # NumPy does not currently support bfloat16. Use float32 instead.
             result_accumulated_scores_cpu = result_accumulated_scores_cpu.to(dtype=pt.float32)
@@ -1252,7 +1253,8 @@ class Translator:
                          lengths[best_ids],
                          accumulated_scores[best_ids],
                          reference_lengths[best_ids],
-                         alignment_head_attention[best_ids] if alignment_head_attention is not None else [None for i in range(len(best_ids))])])  # type: ignore
+                         alignment_head_attention[best_ids] if alignment_head_attention is not None
+                         else [None for i in range(len(best_ids))])])  # type: ignore
 
         # reorder and regroup lists
         reduced_translations = [_reduce_nbest_translations(grouped_nbest) for grouped_nbest in zip(*nbest_translations)]  # type: ignore
