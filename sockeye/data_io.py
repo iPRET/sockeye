@@ -1380,6 +1380,7 @@ class SequenceReader:
                 sequence.append(self.eos_id)
             yield sequence
 
+
 class AlignmentMatrixReader:
     """
     Alignment matrix iterator. Streams and parses alignment matrix alignment indexes from a file.
@@ -1488,8 +1489,8 @@ def parallel_iterate(source_iterators: Sequence[Iterator[Optional[Any]]],
         logger.warning("Parallel reading of sequences skipped %d elements", num_skipped)
 
     check_condition(
-        all(next(cast(Iterator, s), None) is None for s in source_iterators) and \
-        all(next(cast(Iterator, t), None) is None for t in target_iterators) and \
+        all(next(cast(Iterator, s), None) is None for s in source_iterators) and
+        all(next(cast(Iterator, t), None) is None for t in target_iterators) and
         (alignment_matrix_iterator is None or next(cast(Iterator, alignment_matrix_iterator), None) is None),
         "Different number of lines in source(s) or target(s) or alignment matrix (if specified) iterables.")
 
@@ -1530,6 +1531,7 @@ def get_target_bucket(buckets: List[Tuple[int, int]],
             bucket_idx, bucket = j, (source_bkt, target_bkt)
             break
     return bucket_idx, bucket
+
 
 def parse_alignment_matrix_indices(line: str) -> List[Tuple[int, int]]:
     """
@@ -1707,7 +1709,7 @@ class ParallelDataSet:
         :param seed: The random seed used for sampling sentences to fill up.
         :return: New dataset with buckets filled up to the next multiple of batch size
         """
-        #My guess is the list(...)s are here to define new lists of the correct size.
+        # My guess is the list(...)s are here to define new lists of the correct size.
         source = list(self.source)
         target = list(self.target)
         prepended_source_length = list(self.prepended_source_length) \
@@ -1756,12 +1758,12 @@ class ParallelDataSet:
                                                                                         0, desired_indices)), dim=0)
                 if alignment_matrix is not None:
                     assert bucket_alignment_matrix is not None
-                    #Conversion CSR -> COO -> CSR is done, because in this version of torch sparse CSR tensors don't
-                    #support torch.index_select.
+                    # Conversion CSR -> COO -> CSR is done, because in this version of torch sparse CSR tensors don't
+                    # support torch.index_select.
                     bucket_alignment_matrix = bucket_alignment_matrix.to_sparse_coo()
                     bucket_alignment_matrix = torch.cat((bucket_alignment_matrix,
-                                                                     torch.index_select(bucket_alignment_matrix,
-                                                                                        0, desired_indices)), dim=0)
+                                                         torch.index_select(bucket_alignment_matrix,0,
+                                                                            desired_indices)), dim=0)
                     alignment_matrix[bucket_idx] = bucket_alignment_matrix.to_sparse_csr()
 
         return ParallelDataSet(source, target, prepended_source_length, alignment_matrix)
@@ -1778,7 +1780,7 @@ class ParallelDataSet:
         source = []  # type: List[torch.Tensor]
         target = []  # type: List[torch.Tensor]
         prepended_source_length = [] if self.prepended_source_length is not None else None  # type: Optional[List[torch.Tensor]]
-        alignment_matrix = [] if self.alignment_matrix is not None else None #type: Optional[List[torch.Tensor]]
+        alignment_matrix = [] if self.alignment_matrix is not None else None  # type: Optional[List[torch.Tensor]]
 
         for buck_idx in range(len(self)):
             num_samples = self.source[buck_idx].shape[0]
@@ -1792,8 +1794,8 @@ class ParallelDataSet:
                                                                       0, permutation))
                 if self.alignment_matrix is not None:
                     assert alignment_matrix is not None
-                    #Conversion CSR -> COO -> CSR is done, because in this version of torch CSR tensors don't support
-                    #torch.index_select.
+                    # Conversion CSR -> COO -> CSR is done, because in this version of torch CSR tensors don't support
+                    # torch.index_select.
                     tmp = self.alignment_matrix[buck_idx].to_sparse_coo()
                     alignment_matrix.append(torch.index_select(tmp, 0, permutation).to_sparse_csr())
             else:
@@ -2302,7 +2304,7 @@ def create_batch_from_parallel_sample(source: torch.Tensor,
     :param prepended_source_length: Length of prepended source tokens tensor. Shape: (batch,).
     :param alignment_matrix: Sparse CSR tensor with alignment matrices.
                              Shape (batch, max_source_length * max_target_length)
-    :return: Batch
+    :return: a batch of data as a Batch object for training purposes.
     """
     source_words = source[:, :, 0]
     all_source_length = (source_words != C.PAD_ID).sum(dim=1)  # Shape: (batch,)

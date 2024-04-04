@@ -329,7 +329,7 @@ class TransformerDecoder(Decoder):
         if alignment_head_attention is None:
             alignment_head_attention = pt.zeros(0)
 
-        return (target, new_states, alignment_head_attention)
+        return target, new_states, alignment_head_attention
 
     def get_num_hidden(self):
         return self.config.model_size

@@ -531,10 +531,7 @@ class MultiHeadSelfAttention(MultiHeadAttentionBase, AutoregressiveLayer):
         # shape: (length, batch, key_depth + value_depth)
         return 0, batch_size, self.depth_out * 2
 
-    def forward(self, inputs: pt.Tensor,
-                previous_states: Optional[pt.Tensor] = None,
-                mask: Optional[pt.Tensor] = None,
-                **args) -> Tuple[pt.Tensor, pt.Tensor]:  # type: ignore
+    def forward(self, inputs: pt.Tensor, previous_states: Optional[pt.Tensor] = None, mask: Optional[pt.Tensor] = None, **args) -> Tuple[pt.Tensor, pt.Tensor]:  # type: ignore
         """
         Computes multi-head attention on a set of inputs, serving as queries, keys, and values.
         If sequence lengths are provided, they will be used to mask the attention scores.
@@ -577,6 +574,7 @@ class MultiHeadSelfAttention(MultiHeadAttentionBase, AutoregressiveLayer):
             c, _ = self._attend(queries=queries, key_values=states, mask=mask)
             return c, states
 
+
 def single_head_attention(query: pt.Tensor,
                           key: pt.Tensor,
                           q_proj_weight: pt.Tensor,
@@ -599,7 +597,7 @@ def single_head_attention(query: pt.Tensor,
     q = F.linear(query, q_proj_weight, None).transpose(0, 1)
     k = F.linear(key, k_proj_weight, None).transpose(0, 1)
     L, S = q.size(-2), k.size(-2)
-    #Condition is necessary becaues the type changes whether we're tracing or not.
+    # Condition is necessary becaues the type changes whether we're tracing or not.
     if isinstance(q.shape[-1], pt.Tensor):
         scale_factor = 1 / pt.sqrt(q.size(-1))
     else:

@@ -395,6 +395,7 @@ class MSELoss(Loss):
     def create_metric(self) -> 'LossMetric':
         return LossMetric(name=C.LENRATIO_MSE)
 
+
 class AlignmentMatrixKLDivergenceLoss(Loss):
     """
     Computes the KLDivergence between the alignment head's attention probabilities and the ground truth alignment
@@ -432,5 +433,5 @@ class AlignmentMatrixKLDivergenceLoss(Loss):
         return loss, num_samples
 
     def create_metric(self) -> 'LossMetric':
-        #There's a problem that the metric is not useful during evaulation, because we don't do translation forcing.
+        # There's a problem that the metric is not useful during evaulation, because we don't do translation forcing.
         return LossMetric(name='alignment-matrix-kl-divergence')

@@ -1257,7 +1257,7 @@ class Translator:
                          accumulated_scores[best_ids],
                          reference_lengths[best_ids],
                          alignment_head_attention[best_ids] if alignment_head_attention is not None
-                         else [None for i in range(len(best_ids))])])  # type: ignore
+                         else [None for _ in range(len(best_ids))])])  # type: ignore
 
         # reorder and regroup lists
         reduced_translations = [_reduce_nbest_translations(grouped_nbest) for grouped_nbest in zip(*nbest_translations)]  # type: ignore

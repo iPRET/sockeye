@@ -532,14 +532,14 @@ def create_decoder_config(args: argparse.Namespace,
         decoder_transformer_model_size = num_embed_target + total_target_factor_size
 
     if args.alignment_matrix:
-        #training alignment matrixes provided, so model has to return alignment matrices.
+        # Training alignment matrixes provided, so model has to return alignment matrices.
         if args.attention_alignment_layer is None:
-            #Required setting a reasonable default value.
+            # Required setting a reasonable default value.
             if decoder_num_layers > 1:
                 attention_alignment_layer = decoder_num_layers - 2
             else:
                 attention_alignment_layer = 0
-            logger.info("attention-alignment-layer not provided, choosing layer %d" % (attention_alignment_layer))
+            logger.info("attention-alignment-layer not provided, choosing layer %d" % attention_alignment_layer)
         else:
             check_condition(args.attention_alignment_layer >= 0 and args.attention_alignment_layer < decoder_num_layers,
                             'attention-alignment-layer must be between 0 and %d (decoder layer count - 1) inclusive'
@@ -547,7 +547,6 @@ def create_decoder_config(args: argparse.Namespace,
             attention_alignment_layer = args.attention_alignment_layer
     else:
         attention_alignment_layer = None
-
 
 
     config_decoder = transformer.TransformerConfig(
@@ -1181,7 +1180,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
         # https://github.com/pytorch/pytorch/pull/63552
         with torch.cuda.amp.autocast(cache_enabled=False) if args.amp else utils.no_context():  # type: ignore
             training_model = torch.jit.trace(training_model, (batch.source, batch.source_length,
-                                                              batch.target, batch.target_length), strict=False)
+                                                            batch.target, batch.target_length), strict=False)
         eval_iter.reset()
 
     if utils.is_distributed() and not utils.using_deepspeed():
