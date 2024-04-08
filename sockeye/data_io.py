@@ -440,33 +440,58 @@ def get_prepended_token_length(ids: List[int], eop_id: int) -> int:
 def create_alignment_matrix(indexes: List[Tuple[int, int]], size: Tuple[int, int]) -> torch.Tensor:
     """
     Creates a sparse alignment matrix tensor from a list of indexes.
+    The matrix is normalized along source dimension to sum up to 1.
 
     :param indexes: List of alignment indexes. In each tuple, the first number is the source token index and the
                     second number is the target token index.
     :param size: Tuple (source length, target length).
     :return: Sparse COO tensor of shape [1, target length * source length] reshaped from [target length, source length].
+    :note: If a target token has no source token alignments, the row (pre-reshaping) of this target token will be filled
+           with 0s.
     """
+    # Get indexes as tensor.
+    indexes_swapped = [(target_idx, source_idx) for source_idx, target_idx in indexes]
+    indexes_tens = torch.tensor(indexes_swapped).t().long()
+    if indexes_tens.numel() == 0:
+        # This is necessary because torch fails to handle the empty case.
+        indexes_tens = torch.zeros([2, 0]).long()
+
+    # Check that all alignment indexes are within the bucket size limit.
+    if indexes_tens.numel() != 0:
+        max_target_idx = indexes_tens[0, :].max()
+        if max_target_idx >= size[1]:
+            raise ValueError("During creation of alignment matrix tensor encountered target index (%d) that was outside "
+                             "target bounds (%d)!" % (max_target_idx, size[1]))
+        max_source_idx = indexes_tens[1, :].max()
+        if max_source_idx >= size[0]:
+            raise ValueError("During creation of alignment matrix tensor encountered source index (%d) that was outside "
+                             "source bounds (%d)!" % (max_source_idx, size[0]))
+        min_target_idx = indexes_tens[0, :].min()
+        if min_target_idx < 0:
+            raise ValueError("During creation of alignment matrix tensor encountered negative target index (%d)!" %
+                             min_target_idx)
+        min_source_idx = indexes_tens[1, :].min()
+        if min_source_idx < 0:
+            raise ValueError("During creation of alignment matrix tensor encountered negative source index (%d)!" %
+                             min_source_idx)
+
+    # Calculate the normalized sparse values to be placed in the alignment matrix.
+    # First count amount of alignments for each target token.
     amounts = [0] * size[1]
     for _, target_idx in indexes:
         amounts[target_idx] += 1
-
+    # Then calculate normalized value for each target token.
     normalized_values = [0] * size[1]
     for target_idx, amount in enumerate(amounts):
         if amount != 0:
             normalized_values[target_idx] = 1 / amount
-
+    # Then calculate the sparse values corresponding to each index pair.
     values = []
     for _, target_idx in indexes:
         values.append(normalized_values[target_idx])
 
-    # Format indexes.
-    indexes = [(target_idx, source_idx) for source_idx, target_idx in indexes]
-    indexes = torch.tensor(indexes).t().long()
-    if indexes.numel() == 0:
-        # This is necessary beacuse torch fails to handle the empty case.
-        indexes = torch.zeros([2, 0]).long()
-
-    coo_tensor = torch.sparse_coo_tensor(indexes, values, (size[1], size[0]))
+    # Finally actually create the tensor.
+    coo_tensor = torch.sparse_coo_tensor(indexes_tens, values, (size[1], size[0]))
     tensor = coo_tensor.to_dense()
     tensor = tensor.reshape([1, -1])
     coo_tensor = tensor.to_sparse_coo()
