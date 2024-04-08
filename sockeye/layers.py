@@ -591,18 +591,19 @@ def single_head_attention(query: pt.Tensor,
     :param q_proj_weight: Query projection for one attention head. Shape (post projection size, key size)
     :param k_proj_weight: Key projection. Shape (post projection size, key size)
     :param attn_mask: Bool tensor where True indicates to block attention to certain elements.
-                      Shape (target length, source length)
+                      Shape (batch, target length, source length)
     :return: Attention probability distributions. Shape (batch, target length, source length)
     """
     q = F.linear(query, q_proj_weight, None).transpose(0, 1)
     k = F.linear(key, k_proj_weight, None).transpose(0, 1)
     L, S = q.size(-2), k.size(-2)
-    # Condition is necessary becaues the type changes whether we're tracing or not.
+    batch = q.size(0)
+    # Condition is necessary because the type changes whether we're tracing or not.
     if isinstance(q.shape[-1], pt.Tensor):
         scale_factor = 1 / pt.sqrt(q.size(-1))
     else:
         scale_factor = 1 / math.sqrt(q.size(-1))
-    attn_bias = pt.zeros(L, S, dtype=q.dtype, device=q.device)
+    attn_bias = pt.zeros(batch, L, S, dtype=q.dtype, device=q.device)
     if attn_mask is not None:
         attn_bias.masked_fill_(attn_mask, float("-inf"))
     attn_weight = q @ k.transpose(-2, -1) * scale_factor
@@ -724,7 +725,8 @@ class MultiHeadAttention(MultiHeadAttentionBase):
                 first_head_ff_kw_w = self.ff_kv.weight[:self.depth, :][:one_head]
                 alignment_head_attention = single_head_attention(query=queries,
                                                                  key=key_values,
-                                                                 attn_mask=mask[0] if mask is not None else None,
+                                                                 attn_mask=mask[::self.heads]
+                                                                 if mask is not None else None,
                                                                  q_proj_weight=first_head_ff_q_w,
                                                                  k_proj_weight=first_head_ff_kw_w)
 
@@ -738,9 +740,9 @@ class MultiHeadAttention(MultiHeadAttentionBase):
             if self.return_attention:
                 batch = key_values.size(1)
                 source_length = key_values.size(0)
-                alignment_head_attention = attention.reshape([batch, -1, 1, source_length])[:, 0]
+                alignment_head_attention = attention.reshape([batch, self.heads, -1, source_length])[:, 0]
             else:
-                alignment_head_attention = None
+                alignment_head_attention = pt.zeros(0)
             return contexts, alignment_head_attention
 
 
