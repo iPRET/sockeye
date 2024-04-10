@@ -80,7 +80,7 @@ def prepare_data(args: argparse.Namespace):
                                                          alignment_matrix_fname=args.alignment_matrix,
                                                          num_shards=num_shards,
                                                          output_prefix=output_folder)
-    shard_source_paths, shard_target_paths, shard_alignment_matrix_paths = [paths for paths in zip(*shards)]
+    shard_source_paths, shard_target_paths, _ = [paths for paths in zip(*shards)]
 
     # Process shards in parallel using max_processes process
     with utils.create_pool(args.max_processes) as pool:
