@@ -1209,12 +1209,20 @@ class Translator:
 
         :return: List of translations.
         """
-        return self._get_best_translations(self._search(source,
+        translations = self._get_best_translations(self._search(source,
                                                         source_length,
                                                         restrict_lexicon,
                                                         max_output_lengths,
                                                         target_prefix,
                                                         target_prefix_factors))
+
+        for translation_index, translation in enumerate(translations):
+            if translation.alignment_head_attention is not None:
+                # Crop alignment attentions to source length. Also remove EOS.
+                source_len = source_length[translation_index][0]
+                translation.alignment_head_attention = [ls[:source_len - 1] for ls in translation.alignment_head_attention]
+
+        return translations
 
     def _get_best_translations(self, result: SearchResult) -> List[Translation]:
         """
@@ -1314,7 +1322,11 @@ class Translator:
         sequence = sequence[:length]  # type: ignore
         scores = seq_scores.tolist()
         estimated_reference_length = float(estimated_reference_length) if estimated_reference_length else None
-        alignment_head_attention = alignment_head_attention.tolist() if alignment_head_attention is not None else None
+        if alignment_head_attention is not None:
+            # Crop attentions to only the translated tokens (excluding EOS).
+            alignment_head_attention = alignment_head_attention[:length - 1]
+            alignment_head_attention = alignment_head_attention.tolist()
+
         return Translation(sequence, scores,  # type: ignore
                            nbest_translations=None,
                            estimated_reference_length=estimated_reference_length,

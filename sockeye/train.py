@@ -531,7 +531,7 @@ def create_decoder_config(args: argparse.Namespace,
             decoder_transformer_model_size, num_embed_target + total_target_factor_size))
         decoder_transformer_model_size = num_embed_target + total_target_factor_size
 
-    if args.alignment_matrix:
+    if args.alignment_matrix or args.attention_alignment_layer or args.alignment_matrix_weight or args.align_attention:
         # Training alignment matrixes provided, so model has to return alignment matrices.
         if args.attention_alignment_layer is None:
             # Required setting a reasonable default value.
@@ -800,8 +800,8 @@ def create_losses(args: argparse.Namespace, all_num_classes: List[int]) -> List[
                                                   metric_prefix="bow")
         losses.append(bow_loss)
 
-    if args.alignment_matrix:
-        weight = args.alignment_matrix_weight
+    if args.alignment_matrix or args.attention_alignment_layer or args.alignment_matrix_weight or args.align_attention:
+        weight = args.alignment_matrix_weight if args.alignment_matrix_weight is not None else 1.0
         kldiv_loss = loss.AlignmentMatrixKLDivergenceLoss(weight=weight)
         losses.append(kldiv_loss)
 

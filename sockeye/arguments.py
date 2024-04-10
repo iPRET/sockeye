@@ -820,8 +820,15 @@ def add_model_parameters(params):
     model_params.add_argument('--attention-alignment-layer',
                               type=int,
                               default=None,
-                              help='Decoder layer that is trained to align with alignment matrices. Higher number means'
-                                   'closer to output.')
+                              help='Decoder layer that is trained to align with alignment matrices. Higher number '
+                                   'means closer to output.')
+
+    model_params.add_argument('--align-attention',
+                              action='store_true',
+                              default=False,
+                              help='Tells model to do alignment learning. Necessary when attention alignment cannot '
+                                   'be infered from other commandline arguments, like when using --prepared-data '
+                                   'and using defaults for --attention-alignment-layer and --alignment-matrix-weight.')
 
 
 def add_batch_args(params, default_batch_size=4096, default_batch_type=C.BATCH_TYPE_WORD):
@@ -904,7 +911,7 @@ def add_training_args(params):
 
     train_params.add_argument('--alignment-matrix-weight',
                               type=float_greater_or_equal(0.0),
-                              default=1.0,
+                              default=None,
                               help='Weight for KL divergence loss between alignment matrices and alignment head '
                                    'attentions. Relevant if you pass --alignment-matrix for training or have '
                                    'use prepared data containing alignment matrices. Default %(default)s.')
