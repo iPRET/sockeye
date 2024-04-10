@@ -838,12 +838,14 @@ def prepare_data(source_fnames: List[str],
         length_ratio_stats_per_bucket=length_ratio_stats_per_bucket)
     data_statistics.log()
 
+    contains_alignment_matrix = any([am for _, _, am in shards])
     data_info = DataInfo(sources=[os.path.abspath(fname) for fname in source_fnames],
                          targets=[os.path.abspath(fname) for fname in target_fnames],
                          source_vocabs=source_vocab_paths,
                          target_vocabs=target_vocab_paths,
                          shared_vocab=shared_vocab,
-                         num_shards=num_shards)
+                         num_shards=num_shards,
+                         contains_alignment_matrix=contains_alignment_matrix)
     data_info_fname = os.path.join(output_prefix, C.DATA_INFO)
     logger.info("Writing data info to '%s'", data_info_fname)
     data_info.save(data_info_fname)
@@ -948,7 +950,8 @@ def get_prepared_data_iters(prepared_data_dir: str,
                             batch_sentences_multiple_of: int = 1,
                             permute: bool = True) -> Tuple['BaseParallelSampleIter',
                                                            'BaseParallelSampleIter',
-                                                           'DataConfig', List[vocab.Vocab], List[vocab.Vocab]]:
+                                                           'DataConfig',
+                                                           'DataInfo', List[vocab.Vocab], List[vocab.Vocab]]:
     logger.info("===============================")
     logger.info("Creating training data iterator")
     logger.info("===============================")
@@ -1028,7 +1031,7 @@ def get_prepared_data_iters(prepared_data_dir: str,
                                                batch_size=batch_size,
                                                permute=False)
 
-    return train_iter, validation_iter, config_data, source_vocabs, target_vocabs
+    return train_iter, validation_iter, config_data, data_info, source_vocabs, target_vocabs
 
 
 def get_training_data_iters(sources: List[str],
@@ -1133,7 +1136,8 @@ def get_training_data_iters(sources: List[str],
                          source_vocabs=source_vocab_paths,
                          target_vocabs=target_vocab_paths,
                          shared_vocab=shared_vocab,
-                         num_shards=1)
+                         num_shards=1,
+                         contains_alignment_matrix=alignment_matrix is not None)
 
     config_data = DataConfig(data_statistics=data_statistics,
                              max_seq_len_source=max_seq_len_source,
@@ -1291,6 +1295,7 @@ class DataInfo(config.Config):
     target_vocabs: List[Optional[str]]
     shared_vocab: bool
     num_shards: int
+    contains_alignment_matrix: bool = False
 
 
 @dataclass

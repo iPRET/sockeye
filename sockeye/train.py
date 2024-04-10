@@ -266,6 +266,7 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
                                  output_folder: str) -> Tuple['data_io.BaseParallelSampleIter',
                                                               'data_io.BaseParallelSampleIter',
                                                               'data_io.DataConfig',
+                                                              'data_io.DataInfo',
                                                               List[vocab.Vocab], List[vocab.Vocab]]:
     """
     Create the data iterators and the vocabularies.
@@ -306,7 +307,8 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
             utils.check_condition(args.source_vocab is None and args.target_vocab is None,
                                   "You are using a prepared data folder, which is tied to a vocabulary. "
                                   "To change it you need to rerun data preparation with a different vocabulary.")
-        train_iter, validation_iter, data_config, source_vocabs, target_vocabs = data_io.get_prepared_data_iters(
+        (train_iter, validation_iter, data_config, data_info, source_vocabs,
+         target_vocabs) = data_io.get_prepared_data_iters(
             prepared_data_dir=args.prepared_data,
             validation_sources=validation_sources,
             validation_targets=validation_targets,
@@ -355,7 +357,7 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
                         ' but found %d and %d.' % (
                             data_config.num_target_factors, len(validation_targets)))
 
-        return train_iter, validation_iter, data_config, source_vocabs, target_vocabs
+        return train_iter, validation_iter, data_config, data_info, source_vocabs, target_vocabs
 
     else:
         utils.check_condition(args.prepared_data is None and args.source is not None and args.target is not None,
@@ -447,7 +449,7 @@ def create_data_iters_and_vocabs(args: argparse.Namespace,
         logger.info("Writing data config to '%s'", data_info_fname)
         data_info.save(data_info_fname)
 
-        return train_iter, validation_iter, config_data, source_vocabs, target_vocabs
+        return train_iter, validation_iter, config_data, data_info, source_vocabs, target_vocabs
 
 
 def create_encoder_config(args: argparse.Namespace,
@@ -1046,7 +1048,7 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
     logger.info(f'Training Device: {device}')
     utils.seed_rngs(args.seed)
 
-    train_iter, eval_iter, config_data, source_vocabs, target_vocabs = create_data_iters_and_vocabs(
+    train_iter, eval_iter, config_data, data_info, source_vocabs, target_vocabs = create_data_iters_and_vocabs(
         args=args,
         max_seq_len_source=max_seq_len_source,
         max_seq_len_target=max_seq_len_target,
@@ -1062,6 +1064,11 @@ def train(args: argparse.Namespace, custom_metrics_logger: Optional[Callable] = 
         logger.info("Maximum target length determined by prepared data. Using %d instead of %d",
                     config_data.max_seq_len_target, max_seq_len_target)
         max_seq_len_target = config_data.max_seq_len_target
+
+    if not data_info.contains_alignment_matrix and (args.attention_alignment_layer or args.alignment_matrix_weight or
+        args.align_attention):
+        raise ValueError("Commandline arguments imply the wish to train alignments, however no alignments were "
+                         "provided in prepared data or --alignment-matrix.")
 
     # Dump the vocabularies if we're just starting up
     if utils.is_primary_worker() and not resume_training:
