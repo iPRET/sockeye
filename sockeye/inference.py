@@ -1264,7 +1264,8 @@ class Translator:
                          lengths[best_ids],
                          accumulated_scores[best_ids],
                          reference_lengths[best_ids],
-                         alignment_head_attention[best_ids] if alignment_head_attention is not None
+                         alignment_head_attention[indices,
+                                                  np.arange(indices_shape_1)] if alignment_head_attention is not None
                          else [None for _ in range(len(best_ids))])])  # type: ignore
 
         # reorder and regroup lists

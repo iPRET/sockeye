@@ -923,6 +923,7 @@ class BeamSearch(Search):
         # Best word and hypotheses indices across beam search steps from topk operation.
         best_hyp_indices_list = []  # type: List[pt.Tensor]
         best_word_indices_list = []  # type: List[pt.Tensor]
+        attentions = [] # type: List[pt.Tensor]
 
         lengths = pt.zeros(batch_size * self.beam_size, device=self.device, dtype=pt.int32)
         finished = pt.zeros(batch_size * self.beam_size, device=self.device, dtype=pt.bool)
@@ -994,10 +995,6 @@ class BeamSearch(Search):
                 target_prefix_factors, self.output_factor_vocab_size, self.dtype)
             target_prefix_factor_masks = target_prefix_factor_masks.unsqueeze(2).expand(-1, -1, self.beam_size, -1, -1)
 
-        # cat_attentions is supposed to track the alignment head attention matrices for the running best target
-        # hypotheses.
-        cat_attentions = pt.zeros([batch_size * self.beam_size, 0, source_length.max()], device=self.device)
-
         t = 1
         for t in range(1, max_iterations + 1):  # max_iterations + 1 required to get correct results
             # (1) obtain next predictions and advance models' state
@@ -1046,10 +1043,9 @@ class BeamSearch(Search):
                     best_hyp_indices = best_hyp_indices + offset
 
             if alignment_head_attention.numel() != 0:
-                cat_attentions = pt.cat([cat_attentions, alignment_head_attention], dim=1)
-                cat_attentions = pt.index_select(cat_attentions, index=best_hyp_indices, dim=0)
+                attentions.append(alignment_head_attention)
             else:
-                cat_attentions = None
+                attentions = None
 
             # Map from restricted to full vocab ids if needed
             if vocab_slice_ids is not None:
@@ -1089,8 +1085,6 @@ class BeamSearch(Search):
         # 1 = scores_accumulated.size()[1]
         best_hyp_indices = indices.div(1, rounding_mode='floor').int() + offset
         scores_accumulated = scores_accumulated.index_select(0, best_hyp_indices)
-        if cat_attentions is not None:
-            cat_attentions = pt.index_select(cat_attentions, 0, best_hyp_indices)
         if self.num_target_factors > 1:
             accumulated_factor_scores = factor_scores_accumulated[0].index_select(0, best_hyp_indices)
             # (batch*beam, num_target_factors)
@@ -1098,6 +1092,8 @@ class BeamSearch(Search):
 
         best_hyp_indices_list.append(best_hyp_indices)
         lengths = lengths.index_select(0, best_hyp_indices)
+        if attentions is not None:
+            attentions = pt.cat(attentions, dim=1)
         all_best_hyp_indices = pt.stack(best_hyp_indices_list, dim=1)
         all_best_word_indices = pt.stack(best_word_indices_list, dim=2)
 
@@ -1106,7 +1102,7 @@ class BeamSearch(Search):
                             accumulated_scores=scores_accumulated,
                             lengths=lengths,
                             estimated_reference_lengths=estimated_reference_lengths,
-                            alignment_head_attentions=cat_attentions)
+                            alignment_head_attentions=attentions)
 
     def _should_stop(self, finished: pt.Tensor, batch_size: int) -> bool:
         if self.beam_search_stop == C.BEAM_SEARCH_STOP_FIRST:
