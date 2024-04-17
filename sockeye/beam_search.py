@@ -769,14 +769,14 @@ class GreedySearch(Search):
             best_word_index = self.work_block(scores, vocab_slice_ids, target_factors)
             outputs.append(best_word_index)
 
-            _best_word_index = best_word_index[:, 0]
-            if _best_word_index == self.eos_id or _best_word_index == C.PAD_ID:
-                break
-
             if alignment_head_attentions.numel() != 0:
                 cat_attentions = pt.cat([cat_attentions, alignment_head_attentions], dim=1)
             else:
                 cat_attentions = None
+
+            _best_word_index = best_word_index[:, 0]
+            if _best_word_index == self.eos_id or _best_word_index == C.PAD_ID:
+                break
 
         logger.debug("Finished after %d out of %d steps.", t, max_iterations)
 
