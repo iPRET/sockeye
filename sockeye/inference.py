@@ -1255,6 +1255,9 @@ class Translator:
             # Obtain sequences for all best hypotheses in the batch. Shape: (batch, length)
             indices = self._get_best_word_indices_for_kth_hypotheses(best_ids, best_hyp_indices)  # type: ignore
             indices_shape_1 = indices.shape[1]  # pylint: disable=unsubscriptable-object
+            # Alignment vectors indexes seem to have delay compared to best word indices.
+            # Choose 0th vector for first alignments because they should all be identical in that case anyway.
+            alignment_indices = np.concatenate((np.zeros([batch_size, 1], dtype=np.int32), indices[:, :-1]), axis=1)
             nbest_translations.append(
                     [self._assemble_translation(*x[:-1], unshift_target_factors=C.TARGET_FACTOR_SHIFT,
                                                 alignment_head_attention=x[-1]) for x in
@@ -1264,7 +1267,7 @@ class Translator:
                          lengths[best_ids],
                          accumulated_scores[best_ids],
                          reference_lengths[best_ids],
-                         alignment_head_attention[indices,
+                         alignment_head_attention[alignment_indices,
                                                   np.arange(indices_shape_1)] if alignment_head_attention is not None
                          else [None for _ in range(len(best_ids))])])  # type: ignore
 
